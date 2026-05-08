@@ -1,0 +1,1090 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="健身追踪">
+<title>健身追踪</title>
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icon-192.png">
+<style>
+:root {
+  --bg: #F5F5F7; --card: #FFFFFF; --border: #E5E5EA;
+  --text: #1D1D1F; --sec: #6E6E73; --ter: #AEAEB2;
+  --blue: #007AFF; --green: #34C759; --amber: #FF9F0A;
+  --red: #FF3B30; --indigo: #5856D6;
+  --ta-bg: #E8F0FE; --ta-fg: #1A56C4;
+  --tb-bg: #E6F4EA; --tb-fg: #1E7E34;
+  --tc-bg: #FFF3E0; --tc-fg: #E65100;
+  --r: 12px; --r-sm: 8px; --nav-h: 56px; --safe-b: env(safe-area-inset-bottom, 0px);
+}
+* { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+body { font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', sans-serif;
+  background: var(--bg); color: var(--text); min-height: 100vh;
+  -webkit-font-smoothing: antialiased; }
+input, textarea, select, button { font-family: inherit; }
+
+/* ── Login ── */
+#login-screen { display:flex; align-items:center; justify-content:center;
+  min-height: 100vh; padding: 24px; background: var(--bg); }
+.login-card { background: var(--card); border-radius: 20px; padding: 40px 32px;
+  text-align: center; width: 100%; max-width: 360px;
+  box-shadow: 0 4px 24px rgba(0,0,0,0.08); }
+.login-logo { font-size: 52px; margin-bottom: 16px; }
+.login-title { font-size: 26px; font-weight: 700; color: var(--text); margin-bottom: 8px; }
+.login-sub { font-size: 15px; color: var(--sec); margin-bottom: 32px; line-height: 1.5; }
+.google-btn { display:flex; align-items:center; justify-content:center; gap:10px;
+  width: 100%; padding: 14px; border-radius: var(--r); border: 1.5px solid var(--border);
+  background: var(--card); font-size: 15px; font-weight: 500; cursor: pointer;
+  color: var(--text); transition: background 0.15s; }
+.google-btn:active { background: var(--bg); }
+.google-btn svg { flex-shrink: 0; }
+
+/* ── App Shell ── */
+#app { display:none; flex-direction:column; height: 100vh; height: 100dvh; }
+.app-header { background: var(--card); border-bottom: 0.5px solid var(--border);
+  padding: 12px 16px 10px; padding-top: calc(12px + env(safe-area-inset-top, 0px));
+  display: flex; align-items: center; justify-content: space-between; flex-shrink: 0; }
+.header-title { font-size: 17px; font-weight: 600; }
+.header-user { display:flex; align-items:center; gap:8px; }
+.user-avatar { width:30px; height:30px; border-radius:50%; background:var(--blue); object-fit:cover; }
+.user-name { font-size: 13px; color: var(--sec); }
+.sync-btn { background:none; border:none; cursor:pointer; padding:4px; border-radius:6px; }
+.sync-icon { font-size: 18px; color: var(--sec); }
+.sync-icon.syncing { animation: spin 1s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.app-content { flex:1; overflow-y: auto; -webkit-overflow-scrolling: touch; }
+.tab-panel { display:none; padding: 16px; padding-bottom: calc(var(--nav-h) + var(--safe-b) + 16px); }
+.tab-panel.active { display:block; }
+
+/* ── Bottom Nav ── */
+.bottom-nav { display:flex; background:var(--card); border-top:0.5px solid var(--border);
+  padding-bottom: var(--safe-b); flex-shrink: 0; }
+.nav-btn { flex:1; display:flex; flex-direction:column; align-items:center;
+  gap:3px; padding:8px 0; background:none; border:none; cursor:pointer;
+  color: var(--ter); font-size: 10px; font-weight: 500; transition: color 0.15s; }
+.nav-btn.active { color: var(--blue); }
+.nav-icon { font-size: 22px; line-height: 1; }
+
+/* ── Cards ── */
+.card { background:var(--card); border-radius:var(--r); padding:14px;
+  margin-bottom:10px; border: 0.5px solid var(--border); }
+.card-title { font-size:15px; font-weight:600; margin-bottom:12px; }
+.section-title { font-size:13px; font-weight:600; color:var(--sec);
+  text-transform:uppercase; letter-spacing:0.4px; margin:16px 0 8px; }
+
+/* ── Tags ── */
+.tag { display:inline-block; font-size:11px; font-weight:500;
+  padding:3px 9px; border-radius:20px; flex-shrink:0; }
+.tag-a { background:var(--ta-bg); color:var(--ta-fg); }
+.tag-b { background:var(--tb-bg); color:var(--tb-fg); }
+.tag-c { background:var(--tc-bg); color:var(--tc-fg); }
+.tag-rest { background:var(--bg); color:var(--sec); }
+
+/* ── Progress Bar ── */
+.prog-wrap { display:flex; align-items:center; gap:10px; margin-bottom:4px; }
+.prog-bar-bg { flex:1; height:4px; background:var(--bg); border-radius:2px; overflow:hidden; }
+.prog-bar-fill { height:100%; background:var(--green); border-radius:2px; transition:width 0.4s ease; }
+.prog-label { font-size:12px; color:var(--sec); white-space:nowrap; }
+
+/* ── Exercise Rows ── */
+.ex-list { }
+.ex-row { padding:10px 0; border-bottom:0.5px solid var(--border); }
+.ex-row:last-child { border-bottom:none; }
+.ex-header { display:flex; align-items:baseline; justify-content:space-between; margin-bottom:2px; }
+.ex-name { font-size:14px; font-weight:500; }
+.ex-target { font-size:12px; color:var(--sec); }
+.ex-done-badge { font-size:11px; color:var(--green); font-weight:500; }
+.set-row { display:flex; align-items:center; gap:6px; margin-top:7px; }
+.set-label { font-size:11px; color:var(--ter); width:26px; flex-shrink:0; }
+.set-input { width:46px; text-align:center; font-size:14px; border:1px solid var(--border);
+  border-radius:7px; padding:5px 4px; background:var(--bg); color:var(--text);
+  outline:none; -webkit-appearance:none; }
+.set-input:focus { border-color:var(--blue); }
+.set-unit { font-size:11px; color:var(--ter); white-space:nowrap; }
+.set-band { font-size:12px; border:1px solid var(--border); border-radius:7px;
+  padding:5px 6px; background:var(--bg); color:var(--text); outline:none; }
+.done-btn { background:none; border:1px solid var(--border); border-radius:7px;
+  padding:5px 10px; font-size:12px; cursor:pointer; color:var(--sec); white-space:nowrap;
+  flex-shrink:0; transition:all 0.15s; }
+.done-btn.done { background:var(--tb-bg); border-color:#97C459; color:var(--tb-fg); }
+
+/* ── Edit Exercises Button ── */
+.edit-plan-btn { display:flex; align-items:center; gap:6px; background:none;
+  border:1px solid var(--border); border-radius:20px; padding:5px 12px;
+  font-size:12px; color:var(--sec); cursor:pointer; margin-top:10px; }
+
+/* ── Meals ── */
+.meal-item { display:flex; align-items:flex-start; gap:8px; padding:7px 0;
+  border-bottom:0.5px solid var(--border); }
+.meal-item:last-child { border-bottom:none; }
+.meal-time { font-size:11px; color:var(--sec); white-space:nowrap; min-width:40px; margin-top:2px; }
+.meal-text { font-size:14px; color:var(--text); flex:1; line-height:1.4; }
+.del-btn { background:none; border:none; cursor:pointer; font-size:18px;
+  color:var(--ter); padding:0; flex-shrink:0; line-height:1; }
+.meal-add-row { display:flex; gap:6px; align-items:center; margin-top:10px; flex-wrap:wrap; }
+.meal-add-row input { font-size:13px; border:1px solid var(--border); border-radius:7px;
+  padding:7px 10px; background:var(--bg); color:var(--text); outline:none; }
+.meal-add-row input:focus { border-color:var(--blue); }
+.meal-time-inp { width:70px; }
+.meal-text-inp { flex:1; min-width:120px; }
+.add-meal-btn { padding:7px 14px; font-size:13px; font-weight:500; border-radius:7px;
+  border:none; background:var(--blue); color:white; cursor:pointer; white-space:nowrap; }
+.photo-btn { padding:7px 10px; border-radius:7px; border:1px solid var(--border);
+  background:var(--bg); cursor:pointer; font-size:16px; }
+
+/* ── Notes ── */
+.note-area { width:100%; border:1px solid var(--border); border-radius:var(--r-sm);
+  padding:10px; font-size:14px; color:var(--text); background:var(--bg);
+  resize:none; min-height:72px; outline:none; font-family:inherit; line-height:1.5; }
+.note-area:focus { border-color:var(--blue); }
+
+/* ── Buttons ── */
+.btn-row { display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-top:4px; }
+.btn { padding:11px; font-size:14px; font-weight:500; border-radius:var(--r-sm);
+  border:1px solid var(--border); background:var(--bg); cursor:pointer;
+  color:var(--text); transition:all 0.15s; display:flex; align-items:center;
+  justify-content:center; gap:6px; }
+.btn:active { opacity:0.7; }
+.btn-primary { background:var(--blue); border-color:var(--blue); color:white; }
+.btn-saved { background:var(--tb-bg); border-color:var(--green); color:var(--tb-fg); }
+.save-note { font-size:11px; color:var(--ter); text-align:center; margin-top:8px; }
+
+/* ── History ── */
+.hist-item { border-bottom:0.5px solid var(--border); }
+.hist-item:last-child { border-bottom:none; }
+.hist-hd { display:flex; align-items:center; justify-content:space-between;
+  padding:11px 0; cursor:pointer; gap:8px; }
+.hist-hd-left { flex:1; min-width:0; }
+.hist-date-row { display:flex; align-items:center; gap:8px; margin-bottom:3px; }
+.hist-date { font-size:14px; font-weight:500; }
+.hist-summary { font-size:12px; color:var(--sec); }
+.hist-chevron { font-size:16px; color:var(--ter); flex-shrink:0; transition:transform 0.2s; }
+.hist-chevron.open { transform:rotate(180deg); }
+.hist-detail { display:none; padding:0 0 12px; }
+.hist-detail.open { display:block; }
+.hist-detail-section { margin-bottom:8px; }
+.hist-detail-label { font-size:11px; font-weight:600; color:var(--sec);
+  text-transform:uppercase; letter-spacing:0.3px; margin-bottom:4px; }
+.hist-ex-row { display:flex; gap:8px; padding:2px 0; font-size:13px; }
+.hist-ex-icon { color:var(--green); flex-shrink:0; }
+.hist-ex-icon.partial { color:var(--amber); }
+.hist-ex-icon.none { color:var(--ter); }
+.hist-meal-row { display:flex; gap:8px; padding:2px 0; font-size:13px; }
+.hist-meal-time { color:var(--sec); white-space:nowrap; min-width:40px; }
+.hist-note-box { font-size:13px; color:var(--sec); background:var(--bg);
+  padding:8px; border-radius:var(--r-sm); margin-top:4px; }
+
+/* ── Chat ── */
+.chat-container { display:flex; flex-direction:column;
+  height: calc(100vh - var(--nav-h) - env(safe-area-inset-top, 0px) - 57px);
+  height: calc(100dvh - var(--nav-h) - env(safe-area-inset-top, 0px) - 57px); }
+.chat-messages { flex:1; overflow-y:auto; padding:16px; display:flex;
+  flex-direction:column; gap:10px; -webkit-overflow-scrolling:touch; }
+.msg { max-width:82%; display:flex; flex-direction:column; gap:4px; }
+.msg.user { align-self:flex-end; align-items:flex-end; }
+.msg.ai { align-self:flex-start; align-items:flex-start; }
+.msg-bubble { padding:10px 13px; border-radius:18px; font-size:14px;
+  line-height:1.5; word-break:break-word; }
+.msg.user .msg-bubble { background:var(--blue); color:white; border-bottom-right-radius:4px; }
+.msg.ai .msg-bubble { background:var(--card); border:0.5px solid var(--border);
+  color:var(--text); border-bottom-left-radius:4px; }
+.msg-bubble img { max-width:200px; border-radius:10px; display:block; margin-top:6px; }
+.msg-time { font-size:10px; color:var(--ter); padding:0 4px; }
+.chat-input-wrap { padding:10px 16px; padding-bottom:calc(10px + var(--safe-b));
+  background:var(--card); border-top:0.5px solid var(--border);
+  display:flex; align-items:flex-end; gap:8px; }
+.chat-input { flex:1; border:1px solid var(--border); border-radius:20px;
+  padding:9px 14px; font-size:14px; background:var(--bg); color:var(--text);
+  outline:none; resize:none; max-height:100px; font-family:inherit;
+  line-height:1.4; overflow-y:auto; }
+.chat-input:focus { border-color:var(--blue); }
+.chat-cam-btn { width:36px; height:36px; border-radius:50%; border:1px solid var(--border);
+  background:var(--bg); cursor:pointer; font-size:18px; display:flex;
+  align-items:center; justify-content:center; flex-shrink:0; }
+.chat-send-btn { width:36px; height:36px; border-radius:50%; border:none;
+  background:var(--blue); cursor:pointer; color:white; font-size:18px;
+  display:flex; align-items:center; justify-content:center; flex-shrink:0; }
+.chat-send-btn:disabled { background:var(--ter); }
+.typing-indicator .msg-bubble { padding:12px 16px; }
+.dot { display:inline-block; width:6px; height:6px; border-radius:50%;
+  background:var(--ter); animation:bounce 1.2s infinite; margin:0 2px; }
+.dot:nth-child(2) { animation-delay:0.2s; }
+.dot:nth-child(3) { animation-delay:0.4s; }
+@keyframes bounce { 0%,60%,100%{transform:translateY(0)} 30%{transform:translateY(-6px)} }
+
+/* ── Modal ── */
+.modal-overlay { display:none; position:fixed; inset:0; background:rgba(0,0,0,0.4);
+  z-index:100; align-items:flex-end; }
+.modal-overlay.open { display:flex; }
+.modal { background:var(--card); border-radius:20px 20px 0 0; width:100%;
+  max-height:85vh; display:flex; flex-direction:column;
+  padding-bottom:var(--safe-b); }
+.modal-header { display:flex; align-items:center; justify-content:space-between;
+  padding:16px 16px 12px; border-bottom:0.5px solid var(--border); }
+.modal-title { font-size:17px; font-weight:600; }
+.modal-close { background:none; border:none; font-size:24px; cursor:pointer;
+  color:var(--sec); line-height:1; }
+.modal-body { flex:1; overflow-y:auto; padding:12px 16px; }
+.modal-footer { padding:12px 16px; border-top:0.5px solid var(--border); }
+
+.edit-ex-item { display:flex; align-items:center; gap:10px; padding:10px 0;
+  border-bottom:0.5px solid var(--border); }
+.edit-ex-item:last-child { border-bottom:none; }
+.edit-ex-toggle { width:20px; height:20px; border-radius:50%; border:1.5px solid var(--border);
+  cursor:pointer; background:var(--bg); flex-shrink:0; display:flex;
+  align-items:center; justify-content:center; font-size:11px; }
+.edit-ex-toggle.on { background:var(--blue); border-color:var(--blue); color:white; }
+.edit-ex-name { flex:1; font-size:14px; }
+.edit-ex-sets { width:36px; text-align:center; font-size:13px; border:1px solid var(--border);
+  border-radius:6px; padding:4px; background:var(--bg); }
+.edit-section-label { font-size:12px; font-weight:600; color:var(--sec);
+  text-transform:uppercase; letter-spacing:0.3px; margin:12px 0 6px; }
+
+/* ── Misc ── */
+.rest-card-body { font-size:14px; color:var(--sec); line-height:1.6; }
+.next-training { margin-top:8px; font-size:13px; color:var(--ter); }
+.first-badge { font-size:11px; color:var(--amber); background:#FFF3E0;
+  padding:2px 8px; border-radius:20px; font-weight:500; }
+.empty-state { text-align:center; padding:48px 24px; color:var(--sec); font-size:14px; }
+.empty-icon { font-size:40px; margin-bottom:12px; }
+.tip-box { background:var(--ta-bg); border-radius:var(--r-sm); padding:10px 12px;
+  font-size:12px; color:var(--ta-fg); margin-bottom:12px; }
+#hidden-photo { display:none; }
+</style>
+</head>
+<body>
+
+<!-- Login Screen -->
+<div id="login-screen">
+  <div class="login-card">
+    <div class="login-logo">💪</div>
+    <h1 class="login-title">健身追踪</h1>
+    <p class="login-sub">你的12周健身计划助手<br>数据同步到 Google Drive</p>
+    <button class="google-btn" onclick="Auth.signIn()">
+      <svg width="18" height="18" viewBox="0 0 18 18"><path fill="#4285F4" d="M16.51 8H8.98v3h4.3c-.18 1-.74 1.48-1.6 2.04v2.01h2.6a7.8 7.8 0 002.38-5.88c0-.57-.05-.66-.15-1.18z"/><path fill="#34A853" d="M8.98 17c2.16 0 3.97-.72 5.3-1.94l-2.6-2a4.8 4.8 0 01-7.18-2.54H1.83v2.07A8 8 0 008.98 17z"/><path fill="#FBBC05" d="M4.5 10.52a4.8 4.8 0 010-3.04V5.41H1.83a8 8 0 000 7.18l2.67-2.07z"/><path fill="#EA4335" d="M8.98 4.18c1.17 0 2.23.4 3.06 1.2l2.3-2.3A8 8 0 001.83 5.4L4.5 7.49a4.77 4.77 0 014.48-3.3z"/></svg>
+      使用 Google 账号登录
+    </button>
+  </div>
+</div>
+
+<!-- Main App -->
+<div id="app">
+  <header class="app-header">
+    <div class="header-user" id="header-user"></div>
+    <div style="display:flex;align-items:center;gap:8px">
+      <button class="sync-btn" onclick="Drive.sync()" title="同步数据">
+        <span class="sync-icon" id="sync-icon">⟳</span>
+      </button>
+    </div>
+  </header>
+
+  <main class="app-content">
+    <div id="panel-today" class="tab-panel active"></div>
+    <div id="panel-history" class="tab-panel"></div>
+    <div id="panel-chat" class="tab-panel" style="padding:0">
+      <div class="chat-container">
+        <div class="chat-messages" id="chat-messages">
+          <div class="msg ai">
+            <div class="msg-bubble">你好！我是你的健身助手 👋<br>可以告诉我你今天吃了什么、做了什么运动，或者直接拍照给我看！</div>
+          </div>
+        </div>
+        <div class="chat-input-wrap">
+          <button class="chat-cam-btn" onclick="document.getElementById('hidden-photo').click()">📷</button>
+          <textarea class="chat-input" id="chat-input" placeholder="发消息给 AI 助手…" rows="1"
+            onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();Chat.send()}"
+            oninput="this.style.height='auto';this.style.height=this.scrollHeight+'px'"></textarea>
+          <button class="chat-send-btn" id="chat-send-btn" onclick="Chat.send()">↑</button>
+        </div>
+        <input type="file" id="hidden-photo" accept="image/*" capture="environment" onchange="Chat.handlePhoto(this)">
+      </div>
+    </div>
+  </main>
+
+  <nav class="bottom-nav">
+    <button class="nav-btn active" onclick="Nav.show('today')" id="nav-today">
+      <span class="nav-icon">🏠</span>今天
+    </button>
+    <button class="nav-btn" onclick="Nav.show('history')" id="nav-history">
+      <span class="nav-icon">📋</span>历史
+    </button>
+    <button class="nav-btn" onclick="Nav.show('chat')" id="nav-chat">
+      <span class="nav-icon">💬</span>AI助手
+    </button>
+  </nav>
+</div>
+
+<!-- Edit Exercises Modal -->
+<div class="modal-overlay" id="edit-modal">
+  <div class="modal">
+    <div class="modal-header">
+      <span class="modal-title">编辑今日训练</span>
+      <button class="modal-close" onclick="EditModal.close()">×</button>
+    </div>
+    <div class="modal-body" id="edit-modal-body"></div>
+    <div class="modal-footer">
+      <button class="btn btn-primary" style="width:100%" onclick="EditModal.save()">保存修改</button>
+    </div>
+  </div>
+</div>
+
+<script src="https://accounts.google.com/gsi/client" async defer></script>
+<script>
+'use strict';
+
+// ─────────────────────────────────────────
+// CONFIG  ← Replace GEMINI_API_KEY with yours
+// ─────────────────────────────────────────
+const CONFIG = {
+  CLIENT_ID: '194600471684-5g10sfj8n8i1jo49d85n9u8pksel0dmi.apps.googleusercontent.com',
+  GEMINI_API_KEY: AIzaSyA-3BiWm8EWJfTm-hdEAGGwXtia59lyrH0,   // ← REPLACE THIS
+  DRIVE_FILE: 'fitness-tracker-data.json',
+  SCOPES: 'https://www.googleapis.com/auth/drive.file profile email'
+};
+
+// ─────────────────────────────────────────
+// EXERCISE PLAN
+// ─────────────────────────────────────────
+const PLAN = {
+  A: { name:'推 + 核心', tag:'训练 A', cls:'tag-a', exercises:[
+    {id:'a1',name:'俯卧撑',target:'3组 × 8–12次',sets:3,type:'reps'},
+    {id:'a2',name:'跪姿派克俯卧撑',target:'3组 × 8次',sets:3,type:'reps'},
+    {id:'a3',name:'死虫式',target:'3组 × 10次/侧',sets:3,type:'side'},
+    {id:'a4',name:'臀桥',target:'3组 × 15次',sets:3,type:'reps'}
+  ]},
+  B: { name:'拉 + 肩后束', tag:'训练 B', cls:'tag-b', exercises:[
+    {id:'b1',name:'弹力带拉伸',target:'4组 × 15次',sets:4,type:'band'},
+    {id:'b2',name:'弹力带划船',target:'3组 × 12次',sets:3,type:'band'},
+    {id:'b3',name:'鸟狗式',target:'3组 × 10次/侧',sets:3,type:'side'},
+    {id:'b4',name:'靠墙天使',target:'2组 × 10次',sets:2,type:'reps'}
+  ]},
+  C: { name:'全身整合', tag:'训练 C', cls:'tag-c', exercises:[
+    {id:'c1',name:'俯卧撑变式',target:'3组 × 尽力',sets:3,type:'reps'},
+    {id:'c2',name:'弹力带面拉',target:'3组 × 15次',sets:3,type:'band'},
+    {id:'c3',name:'侧卧蚌式开合',target:'3组 × 15次/侧',sets:3,type:'side'},
+    {id:'c4',name:'平板支撑',target:'3组 × 20–30秒',sets:3,type:'time'}
+  ]}
+};
+const DAY_MAP = {1:'A', 3:'B', 5:'C', 6:'C'};
+const DC = ['周日','周一','周二','周三','周四','周五','周六'];
+
+// ─────────────────────────────────────────
+// AUTH
+// ─────────────────────────────────────────
+const Auth = {
+  token: null,
+  profile: null,
+  tokenClient: null,
+
+  init() {
+    window.addEventListener('load', () => {
+      if (typeof google === 'undefined') {
+        setTimeout(() => this.init(), 500);
+        return;
+      }
+      this.tokenClient = google.accounts.oauth2.initTokenClient({
+        client_id: CONFIG.CLIENT_ID,
+        scope: CONFIG.SCOPES,
+        callback: (resp) => {
+          if (resp.error) { console.error(resp); return; }
+          this.token = resp.access_token;
+          this.loadProfile();
+        }
+      });
+      const saved = sessionStorage.getItem('ft_token');
+      if (saved) { this.token = saved; this.loadProfile(); }
+    });
+  },
+
+  signIn() {
+    if (!this.tokenClient) { alert('Google SDK 加载中，请稍后再试'); return; }
+    this.tokenClient.requestAccessToken();
+  },
+
+  async loadProfile() {
+    try {
+      const r = await fetch('https://www.googleapis.com/oauth2/v3/userinfo',
+        { headers: { Authorization: `Bearer ${this.token}` } });
+      if (!r.ok) { this.signIn(); return; }
+      this.profile = await r.json();
+      sessionStorage.setItem('ft_token', this.token);
+      this.onSignedIn();
+    } catch(e) { this.signIn(); }
+  },
+
+  onSignedIn() {
+    document.getElementById('login-screen').style.display = 'none';
+    document.getElementById('app').style.display = 'flex';
+    const u = document.getElementById('header-user');
+    u.innerHTML = `
+      <img class="user-avatar" src="${this.profile.picture}" alt="">
+      <span class="user-name">${this.profile.given_name}</span>`;
+    App.start();
+  },
+
+  signOut() {
+    sessionStorage.removeItem('ft_token');
+    this.token = null;
+    document.getElementById('app').style.display = 'none';
+    document.getElementById('login-screen').style.display = 'flex';
+  }
+};
+
+// ─────────────────────────────────────────
+// GOOGLE DRIVE
+// ─────────────────────────────────────────
+const Drive = {
+  fileId: null,
+  dirty: false,
+  timer: null,
+
+  async findFile() {
+    const r = await fetch(
+      `https://www.googleapis.com/drive/v3/files?q=name='${CONFIG.DRIVE_FILE}'+and+trashed=false&fields=files(id,name)`,
+      { headers: { Authorization: `Bearer ${Auth.token}` } });
+    const d = await r.json();
+    return d.files && d.files.length > 0 ? d.files[0].id : null;
+  },
+
+  async load() {
+    this.setSyncStatus('syncing');
+    try {
+      this.fileId = await this.findFile();
+      if (!this.fileId) {
+        DataStore.data = DataStore.defaultData();
+        await this.save(true);
+      } else {
+        const r = await fetch(
+          `https://www.googleapis.com/drive/v3/files/${this.fileId}?alt=media`,
+          { headers: { Authorization: `Bearer ${Auth.token}` } });
+        DataStore.data = await r.json();
+      }
+      this.setSyncStatus('synced');
+    } catch(e) {
+      console.error('Drive load error:', e);
+      DataStore.data = DataStore.defaultData();
+      this.setSyncStatus('offline');
+    }
+    UI.renderToday();
+  },
+
+  async save(force = false) {
+    if (!force && !this.dirty) return;
+    this.setSyncStatus('syncing');
+    const body = JSON.stringify(DataStore.data);
+    try {
+      if (!this.fileId) {
+        const meta = { name: CONFIG.DRIVE_FILE, mimeType: 'application/json' };
+        const form = new FormData();
+        form.append('metadata', new Blob([JSON.stringify(meta)], { type:'application/json' }));
+        form.append('media', new Blob([body], { type:'application/json' }));
+        const r = await fetch(
+          'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id',
+          { method:'POST', headers:{ Authorization:`Bearer ${Auth.token}` }, body:form });
+        const d = await r.json();
+        this.fileId = d.id;
+      } else {
+        await fetch(
+          `https://www.googleapis.com/upload/drive/v3/files/${this.fileId}?uploadType=media`,
+          { method:'PATCH', headers:{ Authorization:`Bearer ${Auth.token}`, 'Content-Type':'application/json' }, body });
+      }
+      this.dirty = false;
+      this.setSyncStatus('synced');
+    } catch(e) {
+      this.setSyncStatus('offline');
+    }
+  },
+
+  async sync() { await this.save(true); },
+
+  scheduleSave() {
+    this.dirty = true;
+    clearTimeout(this.timer);
+    this.timer = setTimeout(() => this.save(), 2000);
+  },
+
+  setSyncStatus(s) {
+    const el = document.getElementById('sync-icon');
+    if (!el) return;
+    el.className = 'sync-icon' + (s === 'syncing' ? ' syncing' : '');
+    el.textContent = s === 'synced' ? '✓' : s === 'offline' ? '⚠' : '⟳';
+    el.title = s === 'synced' ? '已同步' : s === 'offline' ? '离线' : '同步中…';
+  }
+};
+
+// ─────────────────────────────────────────
+// DATA STORE
+// ─────────────────────────────────────────
+const DataStore = {
+  data: null,
+
+  defaultData() {
+    return { version: 1, days: {} };
+  },
+
+  today() { return this.dateStr(new Date()); },
+
+  dateStr(d) { return d.toISOString().slice(0, 10); },
+
+  getDay(dt) {
+    if (!this.data.days[dt]) {
+      const dow = new Date(dt + 'T12:00:00').getDay();
+      const st = DAY_MAP[dow] || 'rest';
+      const day = { date: dt, st, customExercises: null, exercises: {}, meals: [], note: '' };
+      if (st !== 'rest') {
+        const exList = this.getExerciseList(dt);
+        exList.forEach(e => {
+          day.exercises[e.id] = Array.from({length: e.sets}, () =>
+            e.type === 'band' ? {v:'',b:'轻',d:false} : {v:'',d:false}
+          );
+        });
+      }
+      this.data.days[dt] = day;
+    }
+    return this.data.days[dt];
+  },
+
+  getExerciseList(dt) {
+    const day = this.data.days[dt];
+    if (day && day.customExercises) return day.customExercises;
+    const st = DAY_MAP[new Date(dt + 'T12:00:00').getDay()];
+    return st ? PLAN[st].exercises : [];
+  },
+
+  saveDay(dt, updates) {
+    Object.assign(this.data.days[dt], updates);
+    Drive.scheduleSave();
+  }
+};
+
+// ─────────────────────────────────────────
+// UI — TODAY
+// ─────────────────────────────────────────
+const UI = {
+  renderToday() {
+    const dt = DataStore.today();
+    const day = DataStore.getDay(dt);
+    const now = new Date();
+    const dow = now.getDay();
+    const st = day.st;
+    const dateLabel = `${now.getFullYear()}年${now.getMonth()+1}月${now.getDate()}日 ${DC[dow]}`;
+
+    let html = `<p style="font-size:12px;color:var(--sec);margin-bottom:12px">${dateLabel} · 第1阶段</p>`;
+
+    if (st === 'rest') {
+      html += `<div class="card">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+          <span style="font-size:16px;font-weight:600">今天</span>
+          <span class="tag tag-rest">休息 / 有氧</span>
+        </div>
+        <p class="rest-card-body">今天是休息或有氧日。按原计划进行快走（5公里）或登山，注意补水和拉伸。</p>
+        <p class="next-training">下次训练：${this.nextSession(dow)}</p>
+      </div>`;
+    } else {
+      const plan = PLAN[st];
+      const exList = DataStore.getExerciseList(dt);
+      let tot = 0, dn = 0;
+      exList.forEach(e => { (day.exercises[e.id]||[]).forEach(s => { tot++; if(s.d) dn++; }); });
+      const pct = tot > 0 ? Math.round(dn/tot*100) : 0;
+      const isFirst = Object.keys(DataStore.data.days).length <= 1;
+
+      html += `<div class="card">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+          <div style="display:flex;align-items:center;gap:8px">
+            <span style="font-size:15px;font-weight:600">${plan.name}</span>
+            <span class="tag ${plan.cls}">${plan.tag}</span>
+            ${isFirst ? '<span class="first-badge">第一次！</span>' : ''}
+          </div>
+        </div>
+        <div class="prog-wrap">
+          <div class="prog-bar-bg"><div class="prog-bar-fill" id="prog-fill" style="width:${pct}%"></div></div>
+          <span class="prog-label" id="prog-label">${dn}/${tot} 组</span>
+        </div>
+        ${isFirst ? '<div class="tip-box" style="margin-top:8px">💡 第一次训练：动作准确比次数更重要，腰背不适立即停止</div>' : ''}
+        <div class="ex-list" id="ex-list">`;
+
+      exList.forEach(e => {
+        const sets = day.exercises[e.id] || [];
+        const allDone = sets.length > 0 && sets.every(s => s.d);
+        html += `<div class="ex-row" id="ex-${e.id}">
+          <div class="ex-header">
+            <div><span class="ex-name">${e.name}</span>
+            <span class="ex-target"> — ${e.target}</span></div>
+            <span class="ex-done-badge" id="done-${e.id}" style="display:${allDone?'inline':'none'}">✓ 完成</span>
+          </div>`;
+        sets.forEach((s, i) => { html += this.setRowHTML(e.id, e.type, i, s); });
+        html += `</div>`;
+      });
+
+      html += `</div>
+        <button class="edit-plan-btn" onclick="EditModal.open()">✏️ 编辑今日训练计划</button>
+      </div>`;
+    }
+
+    // Meals
+    html += `<p class="section-title">饮食记录</p>
+    <div class="card">
+      <p style="font-size:12px;color:var(--sec);margin-bottom:10px">
+        ${st !== 'rest' ? '训练日：训练后尽快补充蛋白质（目标每日120g+）' : '今日建议：蛋白质优先，主食适量，避免含糖饮料'}
+      </p>
+      <div id="meal-list">${this.mealListHTML(day.meals)}</div>
+    </div>`;
+
+    // Notes
+    html += `<p class="section-title">今日备注</p>
+    <div class="card">
+      <textarea class="note-area" id="note-area" placeholder="记录训练感受、身体状态…"
+        onchange="UI.saveNote(this.value)">${day.note||''}</textarea>
+    </div>
+    <div class="btn-row">
+      <button class="btn btn-primary" id="save-btn" onclick="UI.saveToday()">💾 保存记录</button>
+      <button class="btn" onclick="Nav.show('chat')">💬 问 AI 助手</button>
+    </div>
+    <p class="save-note">数据自动同步到 Google Drive</p>`;
+
+    document.getElementById('panel-today').innerHTML = html;
+  },
+
+  setRowHTML(eid, type, i, s) {
+    const v = s.v || '';
+    let inputs = '';
+    if (type === 'reps') inputs = `<input class="set-input" type="text" inputmode="numeric" placeholder="次" value="${v}" data-k="${eid}:${i}:v"><span class="set-unit">次</span>`;
+    else if (type === 'side') inputs = `<input class="set-input" type="text" inputmode="numeric" placeholder="次" value="${v}" data-k="${eid}:${i}:v"><span class="set-unit">次/侧</span>`;
+    else if (type === 'time') inputs = `<input class="set-input" type="text" inputmode="numeric" placeholder="秒" value="${v}" data-k="${eid}:${i}:v"><span class="set-unit">秒</span>`;
+    else if (type === 'band') inputs = `<input class="set-input" type="text" inputmode="numeric" placeholder="次" value="${v}" data-k="${eid}:${i}:v"><span class="set-unit">次</span>
+      <select class="set-band" data-k="${eid}:${i}:b">
+        <option value="轻" ${(s.b||'轻')==='轻'?'selected':''}>轻</option>
+        <option value="中" ${s.b==='中'?'selected':''}>中</option>
+        <option value="重" ${s.b==='重'?'selected':''}>重</option>
+      </select><span class="set-unit">阻力</span>`;
+    return `<div class="set-row">
+      <span class="set-label">组${i+1}</span>${inputs}
+      <button id="sb-${eid}-${i}" class="done-btn ${s.d?'done':''}" onclick="UI.toggleSet('${eid}',${i})">${s.d?'✓':'完成'}</button>
+    </div>`;
+  },
+
+  mealListHTML(meals) {
+    const time = new Date().toTimeString().slice(0,5);
+    let h = '';
+    if (meals && meals.length) {
+      meals.forEach((m, i) => {
+        h += `<div class="meal-item">
+          <span class="meal-time">${m.time}</span>
+          <span class="meal-text">${m.text}</span>
+          <button class="del-btn" onclick="UI.deleteMeal(${i})">×</button>
+        </div>`;
+      });
+    }
+    h += `<div class="meal-add-row">
+      <input class="meal-time-inp" type="text" placeholder="${time}" id="m-time">
+      <input class="meal-text-inp" type="text" placeholder="吃了什么…" id="m-text">
+      <button class="add-meal-btn" onclick="UI.addMeal()">+ 记录</button>
+    </div>`;
+    return h;
+  },
+
+  syncInputs() {
+    const dt = DataStore.today();
+    const day = DataStore.getDay(dt);
+    document.querySelectorAll('[data-k]').forEach(el => {
+      const [eid, si, f] = el.dataset.k.split(':');
+      if (day.exercises[eid] && day.exercises[eid][+si]) day.exercises[eid][+si][f] = el.value;
+    });
+  },
+
+  toggleSet(eid, si) {
+    this.syncInputs();
+    const dt = DataStore.today();
+    const day = DataStore.getDay(dt);
+    if (!day.exercises[eid] || !day.exercises[eid][si]) return;
+    day.exercises[eid][si].d = !day.exercises[eid][si].d;
+    const done = day.exercises[eid][si].d;
+    const btn = document.getElementById(`sb-${eid}-${si}`);
+    if (btn) { btn.className = done ? 'done-btn done' : 'done-btn'; btn.textContent = done ? '✓' : '完成'; }
+    const allDone = day.exercises[eid].every(s => s.d);
+    const badge = document.getElementById(`done-${eid}`);
+    if (badge) badge.style.display = allDone ? 'inline' : 'none';
+    // Update progress
+    const exList = DataStore.getExerciseList(dt);
+    let tot = 0, dn = 0;
+    exList.forEach(e => { (day.exercises[e.id]||[]).forEach(s => { tot++; if(s.d) dn++; }); });
+    const bar = document.getElementById('prog-fill');
+    const lbl = document.getElementById('prog-label');
+    if (bar) bar.style.width = (tot > 0 ? Math.round(dn/tot*100) : 0) + '%';
+    if (lbl) lbl.textContent = `${dn}/${tot} 组`;
+    Drive.scheduleSave();
+  },
+
+  addMeal() {
+    this.syncInputs();
+    const dt = DataStore.today();
+    const day = DataStore.getDay(dt);
+    const te = document.getElementById('m-time');
+    const xe = document.getElementById('m-text');
+    const time = (te && te.value.trim()) || new Date().toTimeString().slice(0,5);
+    const text = xe && xe.value.trim();
+    if (!text) return;
+    day.meals.push({ time, text });
+    Drive.scheduleSave();
+    const ml = document.getElementById('meal-list');
+    if (ml) ml.innerHTML = this.mealListHTML(day.meals);
+  },
+
+  deleteMeal(i) {
+    this.syncInputs();
+    const day = DataStore.getDay(DataStore.today());
+    day.meals.splice(i, 1);
+    Drive.scheduleSave();
+    const ml = document.getElementById('meal-list');
+    if (ml) ml.innerHTML = this.mealListHTML(day.meals);
+  },
+
+  saveNote(val) {
+    const day = DataStore.getDay(DataStore.today());
+    day.note = val;
+    Drive.scheduleSave();
+  },
+
+  async saveToday() {
+    this.syncInputs();
+    const btn = document.getElementById('save-btn');
+    if (btn) { btn.className = 'btn btn-saved'; btn.textContent = '✓ 已保存'; }
+    await Drive.save(true);
+    setTimeout(() => { if (btn) { btn.className = 'btn btn-primary'; btn.textContent = '💾 保存记录'; } }, 2000);
+  },
+
+  nextSession(dow) {
+    const order = [1, 3, 5];
+    for (const d of order) if (d > dow) return `${DC[d]}（训练 ${DAY_MAP[d]}）`;
+    return `下周${DC[order[0]]}（训练 ${DAY_MAP[order[0]]}）`;
+  }
+};
+
+// ─────────────────────────────────────────
+// HISTORY
+// ─────────────────────────────────────────
+const History = {
+  openDay: null,
+
+  render() {
+    const days = Object.keys(DataStore.data.days).sort().reverse();
+    if (!days.length) {
+      document.getElementById('panel-history').innerHTML = `
+        <div class="empty-state"><div class="empty-icon">📋</div>还没有记录<br>完成今天的训练后保存即可出现</div>`;
+      return;
+    }
+    let html = '';
+    days.forEach(dt => {
+      const day = DataStore.data.days[dt];
+      if (!day) return;
+      const dow = new Date(dt + 'T12:00:00').getDay();
+      const st = day.st;
+      const cls = st==='A'?'tag-a':st==='B'?'tag-b':st==='C'?'tag-c':'tag-rest';
+      const lbl = st==='rest'?'休息':'训练 '+st;
+      let tot=0, dn=0;
+      if (st !== 'rest') Object.values(day.exercises||{}).forEach(sets => sets.forEach(s => { tot++; if(s.d) dn++; }));
+      const mc = (day.meals||[]).length;
+      const [y,m,d] = dt.split('-');
+      const isOpen = this.openDay === dt;
+      html += `<div class="hist-item">
+        <div class="hist-hd" onclick="History.toggle('${dt}')">
+          <div class="hist-hd-left">
+            <div class="hist-date-row">
+              <span class="hist-date">${y}/${m}/${d} ${DC[dow]}</span>
+              <span class="tag ${cls}">${lbl}</span>
+            </div>
+            <span class="hist-summary">${st!=='rest'?`训练 ${dn}/${tot} 组 · `:''}饮食 ${mc} 条${day.note?' · 有备注':''}</span>
+          </div>
+          <span class="hist-chevron ${isOpen?'open':''}">⌄</span>
+        </div>
+        <div class="hist-detail ${isOpen?'open':''}">${isOpen?this.detailHTML(day):''}</div>
+      </div>`;
+    });
+    document.getElementById('panel-history').innerHTML = `<div class="card" style="padding:4px 14px">${html}</div>`;
+  },
+
+  toggle(dt) {
+    this.openDay = this.openDay === dt ? null : dt;
+    this.render();
+  },
+
+  detailHTML(day) {
+    const st = day.st;
+    let h = '<div style="padding-top:10px">';
+    if (st !== 'rest' && PLAN[st]) {
+      h += `<div class="hist-detail-section"><div class="hist-detail-label">训练 ${st} — ${PLAN[st].name}</div>`;
+      const exList = day.customExercises || PLAN[st].exercises;
+      exList.forEach(e => {
+        const sets = day.exercises?.[e.id] || [];
+        const done = sets.filter(s => s.d);
+        const iconCls = done.length === sets.length && sets.length > 0 ? '' : done.length > 0 ? 'partial' : 'none';
+        const icon = done.length === sets.length && sets.length > 0 ? '✓' : done.length > 0 ? '◑' : '○';
+        let detail = `${done.length}/${sets.length} 组`;
+        const vals = done.filter(s => s.v && s.v !== '');
+        if (vals.length) {
+          const unit = e.type==='time'?'秒':e.type==='side'?'/侧':'次';
+          if (e.type === 'band') {
+            const bs = [...new Set(done.filter(s=>s.b).map(s=>s.b))];
+            detail += ` · ${vals[0].v}次${bs.length?' '+bs[0]+'阻力':''}`;
+          } else detail += ` · ${vals.map(s=>s.v+unit).join('/')}`;
+        }
+        h += `<div class="hist-ex-row"><span class="hist-ex-icon ${iconCls}">${icon}</span>
+          <span style="flex:1">${e.name}</span><span style="color:var(--sec)">${detail}</span></div>`;
+      });
+      h += '</div>';
+    }
+    if ((day.meals||[]).length) {
+      h += `<div class="hist-detail-section"><div class="hist-detail-label">饮食</div>`;
+      day.meals.forEach(m => { h += `<div class="hist-meal-row"><span class="hist-meal-time">${m.time}</span><span>${m.text}</span></div>`; });
+      h += '</div>';
+    }
+    if (day.note) h += `<div class="hist-note-box">📝 ${day.note}</div>`;
+    h += '</div>';
+    return h;
+  }
+};
+
+// ─────────────────────────────────────────
+// EDIT MODAL
+// ─────────────────────────────────────────
+const EditModal = {
+  tempList: null,
+
+  open() {
+    const dt = DataStore.today();
+    const day = DataStore.getDay(dt);
+    const st = day.st;
+    if (st === 'rest') return;
+    const currentList = DataStore.getExerciseList(dt);
+    this.tempList = JSON.parse(JSON.stringify(currentList));
+
+    let html = '<div class="edit-section-label">当前训练动作</div>';
+    this.tempList.forEach((e, idx) => {
+      html += `<div class="edit-ex-item">
+        <button class="edit-ex-toggle on" id="etog-${idx}" onclick="EditModal.removeEx(${idx})">✓</button>
+        <span class="edit-ex-name">${e.name}</span>
+        <span style="font-size:12px;color:var(--sec)">
+          <input class="edit-ex-sets" type="text" inputmode="numeric" value="${e.sets}" id="esets-${idx}">组
+        </span>
+      </div>`;
+    });
+
+    html += '<div class="edit-section-label" style="margin-top:16px">添加动作</div>';
+    // All available exercises not already in list
+    const allEx = [...PLAN.A.exercises, ...PLAN.B.exercises, ...PLAN.C.exercises];
+    const currentIds = new Set(this.tempList.map(e => e.id));
+    allEx.filter(e => !currentIds.has(e.id)).forEach(e => {
+      html += `<div class="edit-ex-item">
+        <button class="edit-ex-toggle" onclick="EditModal.addEx('${e.id}')">+</button>
+        <span class="edit-ex-name">${e.name}</span>
+        <span style="font-size:12px;color:var(--sec)">${e.target}</span>
+      </div>`;
+    });
+
+    document.getElementById('edit-modal-body').innerHTML = html;
+    document.getElementById('edit-modal').classList.add('open');
+  },
+
+  removeEx(idx) {
+    this.tempList.splice(idx, 1);
+    this.open();
+  },
+
+  addEx(id) {
+    const e = [...PLAN.A.exercises, ...PLAN.B.exercises, ...PLAN.C.exercises].find(x => x.id === id);
+    if (e) { this.tempList.push({...e}); this.open(); }
+  },
+
+  save() {
+    // Sync set counts from inputs
+    this.tempList.forEach((e, idx) => {
+      const inp = document.getElementById(`esets-${idx}`);
+      if (inp) e.sets = Math.max(1, parseInt(inp.value) || e.sets);
+    });
+    const dt = DataStore.today();
+    const day = DataStore.getDay(dt);
+    day.customExercises = this.tempList.length > 0 ? this.tempList : null;
+    // Re-initialize exercises for new list
+    this.tempList.forEach(e => {
+      if (!day.exercises[e.id]) {
+        day.exercises[e.id] = Array.from({length: e.sets}, () =>
+          e.type === 'band' ? {v:'',b:'轻',d:false} : {v:'',d:false}
+        );
+      }
+    });
+    Drive.scheduleSave();
+    this.close();
+    UI.renderToday();
+  },
+
+  close() { document.getElementById('edit-modal').classList.remove('open'); }
+};
+
+// ─────────────────────────────────────────
+// GEMINI CHAT
+// ─────────────────────────────────────────
+const Chat = {
+  history: [],
+  pendingImage: null,
+
+  async send() {
+    const inp = document.getElementById('chat-input');
+    const text = inp.value.trim();
+    if (!text && !this.pendingImage) return;
+
+    const sendBtn = document.getElementById('chat-send-btn');
+    sendBtn.disabled = true;
+    inp.value = '';
+    inp.style.height = 'auto';
+
+    // Build message parts
+    const parts = [];
+    if (this.pendingImage) {
+      parts.push({ inlineData: { mimeType: this.pendingImage.mime, data: this.pendingImage.data } });
+      this.addMessage('user', '', this.pendingImage.url);
+      this.pendingImage = null;
+    }
+    if (text) parts.push({ text });
+    if (text || parts.length) this.addMessage('user', text);
+
+    // Show typing indicator
+    const typingId = 'typing-' + Date.now();
+    this.addTyping(typingId);
+
+    // Build context from today's data
+    const dt = DataStore.today();
+    const day = DataStore.getDay(dt);
+    const todaySummary = this.buildContext(day);
+
+    try {
+      const contents = [
+        { role: 'user', parts: [{ text: todaySummary }] },
+        { role: 'model', parts: [{ text: '好的，我已了解你今天的情况，请告诉我你需要什么帮助。' }] },
+        ...this.history.map(m => ({ role: m.role === 'user' ? 'user' : 'model', parts: [{ text: m.text }] })),
+        { role: 'user', parts }
+      ];
+
+      const resp = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${CONFIG.GEMINI_API_KEY}`,
+        { method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contents,
+            systemInstruction: { parts: [{ text: this.systemPrompt() }] },
+            generationConfig: { maxOutputTokens: 600, temperature: 0.7 }
+          })
+        }
+      );
+      const data = await resp.json();
+      const reply = data.candidates?.[0]?.content?.parts?.[0]?.text || '抱歉，我没有收到回复，请再试一次。';
+      document.getElementById(typingId)?.remove();
+      this.addMessage('ai', reply);
+      this.history.push({ role: 'user', text: text || '[图片]' });
+      this.history.push({ role: 'ai', text: reply });
+      if (this.history.length > 20) this.history = this.history.slice(-20);
+    } catch(e) {
+      document.getElementById(typingId)?.remove();
+      this.addMessage('ai', '网络错误，请检查 API Key 设置或网络连接后重试。');
+    }
+    sendBtn.disabled = false;
+  },
+
+  handlePhoto(input) {
+    const file = input.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const base64 = e.target.result.split(',')[1];
+      this.pendingImage = { data: base64, mime: file.type, url: e.target.result };
+      this.addMessage('user', '📷 已选择图片', e.target.result);
+    };
+    reader.readAsDataURL(file);
+    input.value = '';
+  },
+
+  addMessage(role, text, imgUrl) {
+    const msgs = document.getElementById('chat-messages');
+    const div = document.createElement('div');
+    div.className = `msg ${role}`;
+    const time = new Date().toTimeString().slice(0,5);
+    let content = '';
+    if (imgUrl) content += `<img src="${imgUrl}" style="max-width:200px;border-radius:10px;margin-bottom:4px">`;
+    if (text) content += text.replace(/\n/g, '<br>');
+    div.innerHTML = `<div class="msg-bubble">${content}</div><span class="msg-time">${time}</span>`;
+    msgs.appendChild(div);
+    msgs.scrollTop = msgs.scrollHeight;
+  },
+
+  addTyping(id) {
+    const msgs = document.getElementById('chat-messages');
+    const div = document.createElement('div');
+    div.className = 'msg ai typing-indicator';
+    div.id = id;
+    div.innerHTML = `<div class="msg-bubble"><span class="dot"></span><span class="dot"></span><span class="dot"></span></div>`;
+    msgs.appendChild(div);
+    msgs.scrollTop = msgs.scrollHeight;
+  },
+
+  buildContext(day) {
+    const dt = DataStore.today();
+    const now = new Date();
+    let ctx = `今天是${now.getFullYear()}年${now.getMonth()+1}月${now.getDate()}日，训练类型：${day.st === 'rest' ? '休息日' : '训练' + day.st + '（' + PLAN[day.st]?.name + '）'}。\n`;
+    if (day.st !== 'rest' && PLAN[day.st]) {
+      const exList = DataStore.getExerciseList(dt);
+      let done = [], undone = [];
+      exList.forEach(e => {
+        const sets = day.exercises[e.id] || [];
+        const d = sets.filter(s => s.d).length;
+        if (d > 0) done.push(`${e.name}完成${d}组`);
+        else undone.push(e.name);
+      });
+      if (done.length) ctx += `已完成：${done.join('、')}\n`;
+      if (undone.length) ctx += `未完成：${undone.join('、')}\n`;
+    }
+    if (day.meals?.length) ctx += `饮食记录：${day.meals.map(m => m.time + ' ' + m.text).join('；')}\n`;
+    if (day.note) ctx += `备注：${day.note}\n`;
+    return ctx;
+  },
+
+  systemPrompt() {
+    return `你是一个专业的健身和营养顾问助手。用户是41岁男性，180cm，73.2kg，体脂22.9%（目标降至18%）。
+目标：增加肩背肌肉、减少腹部脂肪、提高心肺功能。腰背有旧伤史（已恢复2年）。
+当前第1阶段（第1-4周），每日蛋白质目标120g+。
+当用户描述或发送食物照片时，分析营养成分并给出建议。
+当用户汇报运动时，确认记录并给出鼓励和建议。
+回复简洁、实用，用中文回复，不超过200字。`;
+  }
+};
+
+// ─────────────────────────────────────────
+// NAVIGATION
+// ─────────────────────────────────────────
+const Nav = {
+  show(tab) {
+    ['today','history','chat'].forEach(t => {
+      document.getElementById(`panel-${t}`).classList.toggle('active', t === tab);
+      document.getElementById(`nav-${t}`).classList.toggle('active', t === tab);
+    });
+    if (tab === 'history') History.render();
+    if (tab === 'today') UI.renderToday();
+  }
+};
+
+// ─────────────────────────────────────────
+// APP INIT
+// ─────────────────────────────────────────
+const App = {
+  async start() {
+    await Drive.load();
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('./sw.js').catch(console.error);
+    }
+  }
+};
+
+Auth.init();
+</script>
+</body>
+</html>
