@@ -336,11 +336,11 @@ input, textarea, select, button { font-family: inherit; }
 'use strict';
 
 // ─────────────────────────────────────────
-// CONFIG  ← Replace GEMINI_API_KEY with yours
+// CONFIG
 // ─────────────────────────────────────────
 const CONFIG = {
   CLIENT_ID: '194600471684-5g10sfj8n8i1jo49d85n9u8pksel0dmi.apps.googleusercontent.com',
-  GEMINI_API_KEY: AIzaSyA-3BiWm8EWJfTm-hdEAGGwXtia59lyrH0,   // ← REPLACE THIS
+  GEMINI_API_KEY: '', // Set this before using the AI assistant.
   DRIVE_FILE: 'fitness-tracker-data.json',
   SCOPES: 'https://www.googleapis.com/auth/drive.file profile email'
 };
@@ -380,23 +380,25 @@ const Auth = {
   tokenClient: null,
 
   init() {
-    window.addEventListener('load', () => {
-      if (typeof google === 'undefined') {
-        setTimeout(() => this.init(), 500);
-        return;
+    window.addEventListener('load', () => this.setupTokenClient());
+  },
+
+  setupTokenClient() {
+    if (typeof google === 'undefined' || !google.accounts?.oauth2) {
+      setTimeout(() => this.setupTokenClient(), 500);
+      return;
+    }
+    this.tokenClient = google.accounts.oauth2.initTokenClient({
+      client_id: CONFIG.CLIENT_ID,
+      scope: CONFIG.SCOPES,
+      callback: (resp) => {
+        if (resp.error) { console.error(resp); return; }
+        this.token = resp.access_token;
+        this.loadProfile();
       }
-      this.tokenClient = google.accounts.oauth2.initTokenClient({
-        client_id: CONFIG.CLIENT_ID,
-        scope: CONFIG.SCOPES,
-        callback: (resp) => {
-          if (resp.error) { console.error(resp); return; }
-          this.token = resp.access_token;
-          this.loadProfile();
-        }
-      });
-      const saved = sessionStorage.getItem('ft_token');
-      if (saved) { this.token = saved; this.loadProfile(); }
     });
+    const saved = sessionStorage.getItem('ft_token');
+    if (saved) { this.token = saved; this.loadProfile(); }
   },
 
   signIn() {
@@ -527,7 +529,12 @@ const DataStore = {
 
   today() { return this.dateStr(new Date()); },
 
-  dateStr(d) { return d.toISOString().slice(0, 10); },
+  dateStr(d) {
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+  },
 
   getDay(dt) {
     if (!this.data.days[dt]) {
@@ -934,6 +941,10 @@ const Chat = {
     const inp = document.getElementById('chat-input');
     const text = inp.value.trim();
     if (!text && !this.pendingImage) return;
+    if (!CONFIG.GEMINI_API_KEY) {
+      this.addMessage('ai', 'AI 助手还没有配置 Gemini API Key。请先在 CONFIG.GEMINI_API_KEY 中填入有效密钥。');
+      return;
+    }
 
     const sendBtn = document.getElementById('chat-send-btn');
     sendBtn.disabled = true;
