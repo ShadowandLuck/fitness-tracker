@@ -340,7 +340,7 @@ input, textarea, select, button { font-family: inherit; }
 // ─────────────────────────────────────────
 const CONFIG = {
   CLIENT_ID: '194600471684-5g10sfj8n8i1jo49d85n9u8pksel0dmi.apps.googleusercontent.com',
-  GEMINI_API_KEY: '', // Set this before using the AI assistant.
+  AI_ENDPOINT: '', // Set to your deployed /api/chat endpoint when using GitHub Pages.
   DRIVE_FILE: 'fitness-tracker-data.json',
   SCOPES: 'https://www.googleapis.com/auth/drive.file profile email'
 };
@@ -937,12 +937,20 @@ const Chat = {
   history: [],
   pendingImage: null,
 
+  endpoint() {
+    if (CONFIG.AI_ENDPOINT) return CONFIG.AI_ENDPOINT;
+    if (location.protocol !== 'http:' && location.protocol !== 'https:') return '';
+    if (location.hostname.endsWith('github.io')) return '';
+    return '/api/chat';
+  },
+
   async send() {
     const inp = document.getElementById('chat-input');
     const text = inp.value.trim();
     if (!text && !this.pendingImage) return;
-    if (!CONFIG.GEMINI_API_KEY) {
-      this.addMessage('ai', 'AI 助手还没有配置 Gemini API Key。请先在 CONFIG.GEMINI_API_KEY 中填入有效密钥。');
+    const endpoint = this.endpoint();
+    if (!endpoint) {
+      this.addMessage('ai', 'AI 助手还没有配置安全的后端接口。请先部署 api/chat.js，并在 CONFIG.AI_ENDPOINT 中填入接口地址。');
       return;
     }
 
@@ -978,18 +986,14 @@ const Chat = {
         { role: 'user', parts }
       ];
 
-      const resp = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${CONFIG.GEMINI_API_KEY}`,
+      const resp = await fetch(endpoint,
         { method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            contents,
-            systemInstruction: { parts: [{ text: this.systemPrompt() }] },
-            generationConfig: { maxOutputTokens: 600, temperature: 0.7 }
-          })
+          body: JSON.stringify({ contents, systemInstruction: this.systemPrompt() })
         }
       );
       const data = await resp.json();
-      const reply = data.candidates?.[0]?.content?.parts?.[0]?.text || '抱歉，我没有收到回复，请再试一次。';
+      if (!resp.ok) throw new Error(data.error || 'AI request failed');
+      const reply = data.text || '抱歉，我没有收到回复，请再试一次。';
       document.getElementById(typingId)?.remove();
       this.addMessage('ai', reply);
       this.history.push({ role: 'user', text: text || '[图片]' });
@@ -997,7 +1001,7 @@ const Chat = {
       if (this.history.length > 20) this.history = this.history.slice(-20);
     } catch(e) {
       document.getElementById(typingId)?.remove();
-      this.addMessage('ai', '网络错误，请检查 API Key 设置或网络连接后重试。');
+      this.addMessage('ai', 'AI 服务暂时不可用，请检查后端接口配置后重试。');
     }
     sendBtn.disabled = false;
   },
