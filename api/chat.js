@@ -3,6 +3,8 @@ const DEFAULT_ALLOWED_ORIGINS = [
   'http://localhost:3000',
   'http://127.0.0.1:3000'
 ];
+const DEFAULT_MAX_OUTPUT_TOKENS = 1600;
+const MAX_OUTPUT_TOKEN_CEILING = 10000;
 
 function allowedOrigins() {
   const configured = (process.env.ALLOWED_ORIGINS || '')
@@ -83,6 +85,12 @@ function validContents(contents) {
   return Array.isArray(contents) && contents.length > 0 && contents.length <= 24;
 }
 
+function maxOutputTokens() {
+  const configured = Number.parseInt(process.env.GEMINI_MAX_OUTPUT_TOKENS || '', 10);
+  if (!Number.isFinite(configured) || configured <= 0) return DEFAULT_MAX_OUTPUT_TOKENS;
+  return Math.min(configured, MAX_OUTPUT_TOKEN_CEILING);
+}
+
 module.exports = async function handler(req, res) {
   setCors(req, res);
 
@@ -134,7 +142,7 @@ module.exports = async function handler(req, res) {
       body: JSON.stringify({
         contents: payload.contents,
         systemInstruction: { parts: [{ text: payload.systemInstruction }] },
-        generationConfig: { maxOutputTokens: 600, temperature: 0.7 }
+        generationConfig: { maxOutputTokens: maxOutputTokens(), temperature: 0.7 }
       })
     });
 
@@ -144,8 +152,15 @@ module.exports = async function handler(req, res) {
       return;
     }
 
+    const candidate = data.candidates?.[0] || {};
+    const text = (candidate.content?.parts || [])
+      .map(part => part.text || '')
+      .join('');
+
     sendJson(res, 200, {
-      text: data.candidates?.[0]?.content?.parts?.[0]?.text || ''
+      text,
+      finishReason: candidate.finishReason || '',
+      usageMetadata: data.usageMetadata || null
     });
   } catch {
     sendJson(res, 502, { error: 'AI service request failed' });

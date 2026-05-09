@@ -1116,7 +1116,10 @@ const Chat = {
       const data = await resp.json();
       if (!resp.ok) throw new Error(data.error || 'AI request failed');
       const { displayText, applied } = this.applyActionFromReply(data.text || '');
-      const reply = displayText || (applied ? this.workoutUpdateSummary() : '抱歉，我没有收到回复，请再试一次。');
+      let reply = displayText || (applied ? this.workoutUpdateSummary() : '抱歉，我没有收到回复，请再试一次。');
+      if (data.finishReason === 'MAX_TOKENS') {
+        reply += '<br><br><span style="color:var(--amber)">这次回复可能被长度限制截断了。你可以直接回复“继续”。</span>';
+      }
       document.getElementById(typingId)?.remove();
       this.addMessage('ai', reply);
       this.history.push({ role: 'user', text: text || '[图片]' });
