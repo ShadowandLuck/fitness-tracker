@@ -296,6 +296,7 @@ input, textarea, select, button { font-family: inherit; }
           <button class="chat-cam-btn" onclick="document.getElementById('hidden-photo').click()">📷</button>
           <textarea class="chat-input" id="chat-input" placeholder="发消息给 AI 助手…" rows="1"
             onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();Chat.send()}"
+            onpaste="Chat.handlePaste(event)"
             oninput="this.style.height='auto';this.style.height=this.scrollHeight+'px'"></textarea>
           <button class="chat-send-btn" id="chat-send-btn" onclick="Chat.send()">↑</button>
         </div>
@@ -1223,15 +1224,33 @@ const Chat = {
 
   handlePhoto(input) {
     const file = input.files[0];
+    if (file) this.queueImage(file, '📷 已选择图片');
+    input.value = '';
+  },
+
+  handlePaste(event) {
+    const file = this.imageFromClipboard(event.clipboardData);
     if (!file) return;
+    event.preventDefault();
+    this.queueImage(file, '📋 已粘贴图片');
+  },
+
+  imageFromClipboard(clipboardData) {
+    if (!clipboardData) return null;
+    const items = Array.from(clipboardData.items || []);
+    const imageItem = items.find(item => item.kind === 'file' && item.type.startsWith('image/'));
+    if (imageItem) return imageItem.getAsFile();
+    return Array.from(clipboardData.files || []).find(file => file.type.startsWith('image/')) || null;
+  },
+
+  queueImage(file, label) {
     const reader = new FileReader();
     reader.onload = (e) => {
       const base64 = e.target.result.split(',')[1];
       this.pendingImage = { data: base64, mime: file.type, url: e.target.result };
-      this.addMessage('user', '📷 已选择图片', e.target.result);
+      this.addMessage('user', label, e.target.result);
     };
     reader.readAsDataURL(file);
-    input.value = '';
   },
 
   addMessage(role, text, imgUrl) {
