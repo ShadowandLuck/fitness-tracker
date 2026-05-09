@@ -1115,8 +1115,8 @@ const Chat = {
       );
       const data = await resp.json();
       if (!resp.ok) throw new Error(data.error || 'AI request failed');
-      const { displayText, applied } = this.applyActionFromReply(data.text || '');
-      let reply = displayText || (applied ? this.workoutUpdateSummary() : '抱歉，我没有收到回复，请再试一次。');
+      const { displayText, applied, summary } = this.applyActionFromReply(data.text || '');
+      let reply = displayText || (applied ? summary : '抱歉，我没有收到回复，请再试一次。');
       if (data.finishReason === 'MAX_TOKENS') {
         reply += '<br><br><span style="color:var(--amber)">这次回复可能被长度限制截断了。你可以直接回复“继续”。</span>';
       }
@@ -1195,16 +1195,32 @@ const Chat = {
   },
 
   applyActionFromReply(reply) {
-    const match = reply.match(/\[\[FT_ACTION\]\]([\s\S]*?)\[\[\/FT_ACTION\]\]/);
-    const displayText = reply.replace(/\[\[FT_ACTION\]\][\s\S]*?\[\[\/FT_ACTION\]\]/, '').trim();
-    if (!match) return { displayText, applied: false };
+    const actionPattern = /\[\[FT_ACTION\]\]([\s\S]*?)\[\[\/FT_ACTION\]\]/g;
+    const matches = [...reply.matchAll(actionPattern)];
+    const displayText = reply.replace(actionPattern, '').trim();
+    if (!matches.length) return { displayText, applied: false, summary: '' };
 
-    try {
-      const action = JSON.parse(match[1].trim());
-      return { displayText, applied: this.applyWorkoutAction(action) };
-    } catch(e) {
-      return { displayText, applied: false };
+    const summaries = [];
+    matches.forEach(match => {
+      try {
+        const action = JSON.parse(match[1].trim());
+        const summary = this.applyAction(action);
+        if (summary) summaries.push(summary);
+      } catch(e) {}
+    });
+
+    return { displayText, applied: summaries.length > 0, summary: summaries.join('<br><br>') };
+  },
+
+  applyAction(action) {
+    if (!action || typeof action !== 'object') return '';
+    if (action.type === 'update_workout') {
+      return this.applyWorkoutAction(action) ? this.workoutUpdateSummary() : '';
     }
+    if (action.type === 'add_meals' || action.type === 'update_meals') {
+      return this.applyMealAction(action);
+    }
+    return '';
   },
 
   applyWorkoutAction(action) {
@@ -1232,6 +1248,29 @@ const Chat = {
       UI.renderToday();
     }
     return changed;
+  },
+
+  applyMealAction(action) {
+    if (!Array.isArray(action.meals)) return '';
+    const dt = DataStore.today();
+    const day = DataStore.getDay(dt);
+    const now = new Date().toTimeString().slice(0,5);
+    const added = [];
+
+    action.meals.forEach(meal => {
+      const text = String(meal.text || meal.name || '').trim();
+      if (!text) return;
+      const time = String(meal.time || now).trim() || now;
+      const duplicate = (day.meals || []).some(m => m.time === time && m.text === text);
+      if (duplicate) return;
+      day.meals.push({ time, text });
+      added.push({ time, text });
+    });
+
+    if (!added.length) return '';
+    Drive.scheduleSave();
+    UI.renderToday();
+    return `已更新今天的饮食记录：<br>${added.map(m => `${m.time} ${m.text}`).join('<br>')}`;
   },
 
   workoutUpdateSummary() {
@@ -1362,7 +1401,8 @@ const Chat = {
   buildContext(day) {
     const dt = DataStore.today();
     const now = new Date();
-    let ctx = `今天是${now.getFullYear()}年${now.getMonth()+1}月${now.getDate()}日，训练类型：${day.st === 'rest' ? '休息日' : '训练' + day.st + '（' + PLAN[day.st]?.name + '）'}。\n`;
+    const time = now.toTimeString().slice(0,5);
+    let ctx = `今天是${now.getFullYear()}年${now.getMonth()+1}月${now.getDate()}日，现在时间${time}，训练类型：${day.st === 'rest' ? '休息日' : '训练' + day.st + '（' + PLAN[day.st]?.name + '）'}。\n`;
     if (DataStore.data.aiMemory) ctx += `长期记忆：\n${DataStore.data.aiMemory}\n`;
     if (day.st !== 'rest' && PLAN[day.st]) {
       const exList = DataStore.getExerciseList(dt);
@@ -1388,6 +1428,10 @@ const Chat = {
 当前第1阶段（第1-4周），每日蛋白质目标120g+。
 对话上下文里的“长期记忆”优先级很高，要持续参考其中的用户资料、项目规则和用户新增记忆。
 当用户描述或发送食物照片时，分析营养成分并给出建议。
+当用户明确要求记录饮食、更新饮食记录，或说“把这个/刚才的/图片里的食物记到饮食记录中”时，必须附加隐藏动作块真正写入饮食记录。meal.text 要简洁记录吃了什么，可以包含估算份量和关键营养，不要写长分析。time 如果用户没指定，就使用当前时间。格式如下：
+	[[FT_ACTION]]
+	{"type":"add_meals","meals":[{"time":"当前HH:MM","text":"两根黄瓜，约30 kcal，补水为主"}]}
+	[[/FT_ACTION]]
 	当用户汇报运动时，如果能明确识别今日动作、组数和每组次数/秒数，回复中必须附加一个隐藏动作块用于更新记录，格式如下：
 	[[FT_ACTION]]
 	{"type":"update_workout","exercises":[{"id":"动作ID","sets":[{"index":0,"value":"8","done":true}]}]}
