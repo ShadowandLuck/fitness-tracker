@@ -969,6 +969,12 @@ const Chat = {
     if (text) parts.push({ text });
     if (text || parts.length) this.addMessage('user', text);
 
+    if (text && this.tryApplyWorkoutFromText(text)) {
+      this.addMessage('ai', this.workoutUpdateSummary());
+      sendBtn.disabled = false;
+      return;
+    }
+
     // Show typing indicator
     const typingId = 'typing-' + Date.now();
     this.addTyping(typingId);
@@ -993,7 +999,8 @@ const Chat = {
       );
       const data = await resp.json();
       if (!resp.ok) throw new Error(data.error || 'AI request failed');
-      const reply = data.text || '抱歉，我没有收到回复，请再试一次。';
+      const { displayText, applied } = this.applyActionFromReply(data.text || '');
+      const reply = displayText || (applied ? this.workoutUpdateSummary() : '抱歉，我没有收到回复，请再试一次。');
       document.getElementById(typingId)?.remove();
       this.addMessage('ai', reply);
       this.history.push({ role: 'user', text: text || '[图片]' });
@@ -1004,6 +1011,107 @@ const Chat = {
       this.addMessage('ai', 'AI 服务暂时不可用，请检查后端接口配置后重试。');
     }
     sendBtn.disabled = false;
+  },
+
+  tryApplyWorkoutFromText(text) {
+    const dt = DataStore.today();
+    const day = DataStore.getDay(dt);
+    if (day.st === 'rest') return false;
+    const exList = DataStore.getExerciseList(dt);
+    let changed = false;
+
+    exList.forEach(ex => {
+      const line = text.split(/\n|；|;/).find(part => this.lineMentionsExercise(part, ex));
+      if (!line) return;
+      const setMatch = line.match(/(\d+)\s*组/);
+      const count = setMatch ? Math.min(parseInt(setMatch[1], 10), day.exercises[ex.id]?.length || 0) : day.exercises[ex.id]?.length || 0;
+      const valueMatch = line.match(/每组\s*(\d+)|(\d+)\s*(?:个|次|秒)/);
+      const value = valueMatch ? (valueMatch[1] || valueMatch[2]) : '';
+
+      for (let i = 0; i < count; i++) {
+        const set = day.exercises[ex.id]?.[i];
+        if (!set) continue;
+        if (value) set.v = value;
+        set.d = true;
+        changed = true;
+      }
+    });
+
+    if (changed) {
+      Drive.scheduleSave();
+      UI.renderToday();
+    }
+    return changed;
+  },
+
+  lineMentionsExercise(line, ex) {
+    if (line.includes(ex.name)) return true;
+    const aliases = {
+      c1: ['俯卧撑变式'],
+      c2: ['面拉'],
+      c3: ['蚌式开合', '蛤式开合', '侧卧蚌式'],
+      c4: ['平板'],
+      a1: ['俯卧撑'],
+      a2: ['派克俯卧撑'],
+      a3: ['死虫'],
+      a4: ['臀桥'],
+      b1: ['弹力带拉伸'],
+      b2: ['弹力带划船', '划船'],
+      b3: ['鸟狗'],
+      b4: ['靠墙天使']
+    };
+    return (aliases[ex.id] || []).some(alias => line.includes(alias));
+  },
+
+  applyActionFromReply(reply) {
+    const match = reply.match(/\[\[FT_ACTION\]\]([\s\S]*?)\[\[\/FT_ACTION\]\]/);
+    const displayText = reply.replace(/\[\[FT_ACTION\]\][\s\S]*?\[\[\/FT_ACTION\]\]/, '').trim();
+    if (!match) return { displayText, applied: false };
+
+    try {
+      const action = JSON.parse(match[1].trim());
+      return { displayText, applied: this.applyWorkoutAction(action) };
+    } catch(e) {
+      return { displayText, applied: false };
+    }
+  },
+
+  applyWorkoutAction(action) {
+    if (!action || action.type !== 'update_workout' || !Array.isArray(action.exercises)) return false;
+    const dt = DataStore.today();
+    const day = DataStore.getDay(dt);
+    const validIds = new Set(DataStore.getExerciseList(dt).map(e => e.id));
+    let changed = false;
+
+    action.exercises.forEach(ex => {
+      if (!validIds.has(ex.id) || !Array.isArray(ex.sets)) return;
+      ex.sets.forEach(s => {
+        const index = Number(s.index);
+        const set = day.exercises[ex.id]?.[index];
+        if (!set) return;
+        if (s.value !== undefined) set.v = String(s.value);
+        if (s.band) set.b = String(s.band);
+        set.d = s.done !== false;
+        changed = true;
+      });
+    });
+
+    if (changed) {
+      Drive.scheduleSave();
+      UI.renderToday();
+    }
+    return changed;
+  },
+
+  workoutUpdateSummary() {
+    const day = DataStore.getDay(DataStore.today());
+    const exList = DataStore.getExerciseList(DataStore.today());
+    const rows = exList.map(e => {
+      const sets = day.exercises[e.id] || [];
+      const done = sets.filter(s => s.d).length;
+      return `${e.name}：${done}/${sets.length} 组`;
+    });
+    return `已更新今天的运动记录：<br>${rows.join('<br>')}`;
   },
 
   handlePhoto(input) {
@@ -1057,6 +1165,7 @@ const Chat = {
       });
       if (done.length) ctx += `已完成：${done.join('、')}\n`;
       if (undone.length) ctx += `未完成：${undone.join('、')}\n`;
+      ctx += `今日动作ID：${exList.map(e => `${e.id}=${e.name}，${e.sets}组，类型${e.type}`).join('；')}\n`;
     }
     if (day.meals?.length) ctx += `饮食记录：${day.meals.map(m => m.time + ' ' + m.text).join('；')}\n`;
     if (day.note) ctx += `备注：${day.note}\n`;
@@ -1068,8 +1177,11 @@ const Chat = {
 目标：增加肩背肌肉、减少腹部脂肪、提高心肺功能。腰背有旧伤史（已恢复2年）。
 当前第1阶段（第1-4周），每日蛋白质目标120g+。
 当用户描述或发送食物照片时，分析营养成分并给出建议。
-当用户汇报运动时，确认记录并给出鼓励和建议。
-回复简洁、实用，用中文回复，不超过200字。`;
+	当用户汇报运动时，如果能明确识别今日动作、组数和每组次数/秒数，回复中必须附加一个隐藏动作块用于更新记录，格式如下：
+	[[FT_ACTION]]
+	{"type":"update_workout","exercises":[{"id":"动作ID","sets":[{"index":0,"value":"8","done":true}]}]}
+	[[/FT_ACTION]]
+	index 从 0 开始；3组就写 index 0、1、2。只更新用户明确提到的动作。隐藏动作块外的中文回复简洁、实用，不超过200字。`;
   }
 };
 
