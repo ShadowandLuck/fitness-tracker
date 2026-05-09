@@ -378,6 +378,8 @@ const Auth = {
   token: null,
   profile: null,
   tokenClient: null,
+  silentTried: false,
+  storageKey: 'ft_auth',
 
   init() {
     window.addEventListener('load', () => this.setupTokenClient());
@@ -393,12 +395,15 @@ const Auth = {
       scope: CONFIG.SCOPES,
       callback: (resp) => {
         if (resp.error) { console.error(resp); return; }
-        this.token = resp.access_token;
-        this.loadProfile();
+        this.saveToken(resp);
+        this.loadProfile({ interactive: true });
       }
     });
-    const saved = sessionStorage.getItem('ft_token');
-    if (saved) { this.token = saved; this.loadProfile(); }
+    if (this.restoreToken()) {
+      this.loadProfile({ interactive: false });
+    } else {
+      this.trySilentSignIn();
+    }
   },
 
   signIn() {
@@ -406,15 +411,58 @@ const Auth = {
     this.tokenClient.requestAccessToken();
   },
 
-  async loadProfile() {
+  trySilentSignIn() {
+    if (!this.tokenClient || this.silentTried) return;
+    this.silentTried = true;
+    try {
+      this.tokenClient.requestAccessToken({ prompt: '' });
+    } catch(e) {}
+  },
+
+  saveToken(resp) {
+    this.token = resp.access_token;
+    const expiresIn = Number(resp.expires_in || 3600);
+    const expiresAt = Date.now() + Math.max(expiresIn - 60, 60) * 1000;
+    localStorage.setItem(this.storageKey, JSON.stringify({ token: this.token, expiresAt }));
+  },
+
+  restoreToken() {
+    try {
+      const saved = JSON.parse(localStorage.getItem(this.storageKey) || 'null');
+      if (!saved?.token || !saved.expiresAt || saved.expiresAt <= Date.now()) {
+        this.clearSavedToken();
+        return false;
+      }
+      this.token = saved.token;
+      return true;
+    } catch(e) {
+      this.clearSavedToken();
+      return false;
+    }
+  },
+
+  clearSavedToken() {
+    localStorage.removeItem(this.storageKey);
+    this.token = null;
+  },
+
+  async loadProfile({ interactive = false } = {}) {
     try {
       const r = await fetch('https://www.googleapis.com/oauth2/v3/userinfo',
         { headers: { Authorization: `Bearer ${this.token}` } });
-      if (!r.ok) { this.signIn(); return; }
+      if (!r.ok) {
+        this.clearSavedToken();
+        if (interactive) this.signIn();
+        else this.trySilentSignIn();
+        return;
+      }
       this.profile = await r.json();
-      sessionStorage.setItem('ft_token', this.token);
       this.onSignedIn();
-    } catch(e) { this.signIn(); }
+    } catch(e) {
+      this.clearSavedToken();
+      if (interactive) this.signIn();
+      else this.trySilentSignIn();
+    }
   },
 
   onSignedIn() {
@@ -428,8 +476,7 @@ const Auth = {
   },
 
   signOut() {
-    sessionStorage.removeItem('ft_token');
-    this.token = null;
+    this.clearSavedToken();
     document.getElementById('app').style.display = 'none';
     document.getElementById('login-screen').style.display = 'flex';
   }
