@@ -209,6 +209,14 @@ input, textarea, select, button { font-family: inherit; }
   background:var(--blue); cursor:pointer; color:white; font-size:18px;
   display:flex; align-items:center; justify-content:center; flex-shrink:0; }
 .chat-send-btn:disabled { background:var(--ter); }
+.chat-preview { display:none; align-items:center; gap:10px; padding:8px 16px;
+  background:var(--card); border-top:0.5px solid var(--border); }
+.chat-preview.open { display:flex; }
+.chat-preview img { width:54px; height:54px; border-radius:10px; object-fit:cover;
+  border:1px solid var(--border); }
+.chat-preview-text { flex:1; font-size:12px; color:var(--sec); }
+.chat-preview-remove { border:none; background:var(--bg); color:var(--sec);
+  width:28px; height:28px; border-radius:50%; cursor:pointer; font-size:18px; }
 .typing-indicator .msg-bubble { padding:12px 16px; }
 .dot { display:inline-block; width:6px; height:6px; border-radius:50%;
   background:var(--ter); animation:bounce 1.2s infinite; margin:0 2px; }
@@ -286,17 +294,18 @@ input, textarea, select, button { font-family: inherit; }
     <div id="panel-today" class="tab-panel active"></div>
     <div id="panel-history" class="tab-panel"></div>
     <div id="panel-chat" class="tab-panel" style="padding:0">
-      <div class="chat-container">
+      <div class="chat-container" id="chat-container"
+        onpaste="Chat.handlePaste(event)" ondragover="Chat.handleDragOver(event)" ondrop="Chat.handleDrop(event)">
         <div class="chat-messages" id="chat-messages">
           <div class="msg ai">
             <div class="msg-bubble">你好！我是你的健身助手 👋<br>可以告诉我你今天吃了什么、做了什么运动，或者直接拍照给我看！</div>
           </div>
         </div>
+        <div class="chat-preview" id="chat-preview"></div>
         <div class="chat-input-wrap">
           <button class="chat-cam-btn" onclick="document.getElementById('hidden-photo').click()">📷</button>
           <textarea class="chat-input" id="chat-input" placeholder="发消息给 AI 助手…" rows="1"
             onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();Chat.send()}"
-            onpaste="Chat.handlePaste(event)"
             oninput="this.style.height='auto';this.style.height=this.scrollHeight+'px'"></textarea>
           <button class="chat-send-btn" id="chat-send-btn" onclick="Chat.send()">↑</button>
         </div>
@@ -1026,6 +1035,16 @@ const EditModal = {
 const Chat = {
   history: [],
   pendingImage: null,
+  listenersReady: false,
+
+  init() {
+    if (this.listenersReady) return;
+    document.addEventListener('paste', (event) => {
+      if (!document.getElementById('panel-chat')?.classList.contains('active')) return;
+      this.handlePaste(event);
+    });
+    this.listenersReady = true;
+  },
 
   endpoint() {
     if (CONFIG.AI_ENDPOINT) return CONFIG.AI_ENDPOINT;
@@ -1051,21 +1070,22 @@ const Chat = {
 
     // Build message parts
     const parts = [];
+    const image = this.pendingImage;
     if (this.pendingImage) {
       parts.push({ inlineData: { mimeType: this.pendingImage.mime, data: this.pendingImage.data } });
-      this.addMessage('user', '', this.pendingImage.url);
       this.pendingImage = null;
+      this.renderImagePreview();
     }
     if (text) parts.push({ text });
-    if (text || parts.length) this.addMessage('user', text);
+    if (text || parts.length) this.addMessage('user', text, image?.url);
 
-    if (text && this.trySaveMemoryFromText(text)) {
+    if (!image && text && this.trySaveMemoryFromText(text)) {
       this.addMessage('ai', '我记住了。以后我会把这条信息作为长期上下文来参考。');
       sendBtn.disabled = false;
       return;
     }
 
-    if (text && this.tryApplyWorkoutFromText(text)) {
+    if (!image && text && this.tryApplyWorkoutFromText(text)) {
       this.addMessage('ai', this.workoutUpdateSummary());
       sendBtn.disabled = false;
       return;
@@ -1232,15 +1252,55 @@ const Chat = {
     const file = this.imageFromClipboard(event.clipboardData);
     if (!file) return;
     event.preventDefault();
+    event.stopPropagation();
     this.queueImage(file, '📋 已粘贴图片');
+  },
+
+  handleDragOver(event) {
+    if (this.imageFromFileList(event.dataTransfer?.items || event.dataTransfer?.files)) {
+      event.preventDefault();
+    }
+  },
+
+  handleDrop(event) {
+    const file = this.imageFromFileList(event.dataTransfer?.files || event.dataTransfer?.items);
+    if (!file) return;
+    event.preventDefault();
+    event.stopPropagation();
+    this.queueImage(file, '📎 已添加图片');
   },
 
   imageFromClipboard(clipboardData) {
     if (!clipboardData) return null;
-    const items = Array.from(clipboardData.items || []);
-    const imageItem = items.find(item => item.kind === 'file' && item.type.startsWith('image/'));
-    if (imageItem) return imageItem.getAsFile();
-    return Array.from(clipboardData.files || []).find(file => file.type.startsWith('image/')) || null;
+    return this.imageFromFileList(clipboardData.items)
+      || this.imageFromFileList(clipboardData.files)
+      || this.imageFromHtml(clipboardData.getData('text/html'));
+  },
+
+  imageFromFileList(list) {
+    const items = Array.from(list || []);
+    const item = items.find(x => {
+      const type = x.type || '';
+      return type.startsWith('image/');
+    });
+    if (!item) return null;
+    return typeof item.getAsFile === 'function' ? item.getAsFile() : item;
+  },
+
+  imageFromHtml(html) {
+    if (!html) return null;
+    const match = html.match(/<img[^>]+src=["'](data:image\/[^"']+)["']/i);
+    if (!match) return null;
+    return this.fileFromDataUrl(match[1]);
+  },
+
+  fileFromDataUrl(dataUrl) {
+    const [head, body] = dataUrl.split(',');
+    const mime = (head.match(/data:([^;]+)/) || [])[1] || 'image/png';
+    const bytes = atob(body || '');
+    const arr = new Uint8Array(bytes.length);
+    for (let i = 0; i < bytes.length; i++) arr[i] = bytes.charCodeAt(i);
+    return new File([arr], 'pasted-image.png', { type: mime });
   },
 
   queueImage(file, label) {
@@ -1248,9 +1308,29 @@ const Chat = {
     reader.onload = (e) => {
       const base64 = e.target.result.split(',')[1];
       this.pendingImage = { data: base64, mime: file.type, url: e.target.result };
-      this.addMessage('user', label, e.target.result);
+      this.renderImagePreview(label);
     };
     reader.readAsDataURL(file);
+  },
+
+  renderImagePreview(label = '已添加图片，可继续输入文字后发送') {
+    const el = document.getElementById('chat-preview');
+    if (!el) return;
+    if (!this.pendingImage) {
+      el.classList.remove('open');
+      el.innerHTML = '';
+      return;
+    }
+    el.classList.add('open');
+    el.innerHTML = `
+      <img src="${this.pendingImage.url}" alt="">
+      <span class="chat-preview-text">${label}</span>
+      <button class="chat-preview-remove" onclick="Chat.clearImage()" title="移除图片">×</button>`;
+  },
+
+  clearImage() {
+    this.pendingImage = null;
+    this.renderImagePreview();
   },
 
   addMessage(role, text, imgUrl) {
@@ -1334,6 +1414,7 @@ const App = {
   async start() {
     await Drive.load();
     await Memory.ensure();
+    Chat.init();
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.register('./sw.js').catch(console.error);
     }
