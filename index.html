@@ -464,10 +464,12 @@ const Drive = {
           { headers: { Authorization: `Bearer ${Auth.token}` } });
         DataStore.data = await r.json();
       }
+      DataStore.normalize();
       this.setSyncStatus('synced');
     } catch(e) {
       console.error('Drive load error:', e);
       DataStore.data = DataStore.defaultData();
+      DataStore.normalize();
       this.setSyncStatus('offline');
     }
     UI.renderToday();
@@ -524,7 +526,14 @@ const DataStore = {
   data: null,
 
   defaultData() {
-    return { version: 1, days: {} };
+    return { version: 1, days: {}, aiMemory: '', memoryUpdatedAt: null };
+  },
+
+  normalize() {
+    if (!this.data || typeof this.data !== 'object') this.data = this.defaultData();
+    if (!this.data.days) this.data.days = {};
+    if (typeof this.data.aiMemory !== 'string') this.data.aiMemory = '';
+    if (!('memoryUpdatedAt' in this.data)) this.data.memoryUpdatedAt = null;
   },
 
   today() { return this.dateStr(new Date()); },
@@ -563,6 +572,39 @@ const DataStore = {
 
   saveDay(dt, updates) {
     Object.assign(this.data.days[dt], updates);
+    Drive.scheduleSave();
+  }
+};
+
+// ─────────────────────────────────────────
+// AI MEMORY
+// ─────────────────────────────────────────
+const Memory = {
+  fallback: `# AI Memory
+
+## User Profile
+- 41-year-old male, 180 cm, 73.2 kg, 22.9% body fat, target 18%.
+- Goals: build shoulder/back muscle, reduce abdominal fat, improve cardio.
+- Lower-back injury history, recovered for about 2 years.
+
+## Rules
+- Reply in Chinese, concise and practical.
+- When the user reports completed exercises, help update today's workout record.
+- Keep Gemini API keys out of browser code and use the Vercel backend endpoint.`,
+
+  async loadDefault() {
+    try {
+      const r = await fetch('ai-memory.md', { cache: 'no-store' });
+      if (r.ok) return await r.text();
+    } catch(e) {}
+    return this.fallback;
+  },
+
+  async ensure() {
+    DataStore.normalize();
+    if (DataStore.data.aiMemory.trim()) return;
+    DataStore.data.aiMemory = await this.loadDefault();
+    DataStore.data.memoryUpdatedAt = new Date().toISOString();
     Drive.scheduleSave();
   }
 };
@@ -969,6 +1011,12 @@ const Chat = {
     if (text) parts.push({ text });
     if (text || parts.length) this.addMessage('user', text);
 
+    if (text && this.trySaveMemoryFromText(text)) {
+      this.addMessage('ai', '我记住了。以后我会把这条信息作为长期上下文来参考。');
+      sendBtn.disabled = false;
+      return;
+    }
+
     if (text && this.tryApplyWorkoutFromText(text)) {
       this.addMessage('ai', this.workoutUpdateSummary());
       sendBtn.disabled = false;
@@ -1011,6 +1059,18 @@ const Chat = {
       this.addMessage('ai', 'AI 服务暂时不可用，请检查后端接口配置后重试。');
     }
     sendBtn.disabled = false;
+  },
+
+  trySaveMemoryFromText(text) {
+    const match = text.match(/^(?:请)?记住[：:]?\s*([\s\S]+)/);
+    if (!match || !match[1].trim()) return false;
+    const item = match[1].trim();
+    const date = DataStore.today();
+    DataStore.normalize();
+    DataStore.data.aiMemory = `${DataStore.data.aiMemory.trim()}\n\n## User Added Memory\n- ${date}: ${item}`.trim();
+    DataStore.data.memoryUpdatedAt = new Date().toISOString();
+    Drive.scheduleSave();
+    return true;
   },
 
   tryApplyWorkoutFromText(text) {
@@ -1154,6 +1214,7 @@ const Chat = {
     const dt = DataStore.today();
     const now = new Date();
     let ctx = `今天是${now.getFullYear()}年${now.getMonth()+1}月${now.getDate()}日，训练类型：${day.st === 'rest' ? '休息日' : '训练' + day.st + '（' + PLAN[day.st]?.name + '）'}。\n`;
+    if (DataStore.data.aiMemory) ctx += `长期记忆：\n${DataStore.data.aiMemory}\n`;
     if (day.st !== 'rest' && PLAN[day.st]) {
       const exList = DataStore.getExerciseList(dt);
       let done = [], undone = [];
@@ -1176,6 +1237,7 @@ const Chat = {
     return `你是一个专业的健身和营养顾问助手。用户是41岁男性，180cm，73.2kg，体脂22.9%（目标降至18%）。
 目标：增加肩背肌肉、减少腹部脂肪、提高心肺功能。腰背有旧伤史（已恢复2年）。
 当前第1阶段（第1-4周），每日蛋白质目标120g+。
+对话上下文里的“长期记忆”优先级很高，要持续参考其中的用户资料、项目规则和用户新增记忆。
 当用户描述或发送食物照片时，分析营养成分并给出建议。
 	当用户汇报运动时，如果能明确识别今日动作、组数和每组次数/秒数，回复中必须附加一个隐藏动作块用于更新记录，格式如下：
 	[[FT_ACTION]]
@@ -1205,6 +1267,7 @@ const Nav = {
 const App = {
   async start() {
     await Drive.load();
+    await Memory.ensure();
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.register('./sw.js').catch(console.error);
     }
