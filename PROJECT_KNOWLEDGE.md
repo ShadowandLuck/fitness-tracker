@@ -259,6 +259,11 @@ If that is not enough, unregister the service worker or hard refresh the page.
   - Chat input font size was raised to `16px`.
   - Mobile form controls are forced to at least `16px` to avoid Safari auto-zoom on focus.
   - This avoids the page staying zoomed after sending a message and making the bottom controls draggable.
+- Added image support to diet records and daily notes.
+  - Both sections support direct camera capture and local device upload.
+  - Images are compressed in the browser to smaller JPEG thumbnails before saving.
+  - Diet images are saved with the specific meal entry; note images are saved under the day's note photos.
+  - Because the thumbnails live inside the existing app JSON, Google Drive sync carries them across phone and desktop clients.
 
 ### 2026-05-09
 

@@ -129,7 +129,8 @@ input, textarea, select, button { font-family: inherit; }
   border-bottom:0.5px solid var(--border); }
 .meal-item:last-child { border-bottom:none; }
 .meal-time { font-size:11px; color:var(--sec); white-space:nowrap; min-width:40px; margin-top:2px; }
-.meal-text { font-size:14px; color:var(--text); flex:1; line-height:1.4; }
+.meal-body { flex:1; min-width:0; }
+.meal-text { font-size:14px; color:var(--text); line-height:1.4; }
 .del-btn { background:none; border:none; cursor:pointer; font-size:18px;
   color:var(--ter); padding:0; flex-shrink:0; line-height:1; }
 .meal-add-row { display:flex; gap:6px; align-items:center; margin-top:10px; flex-wrap:wrap; }
@@ -142,12 +143,26 @@ input, textarea, select, button { font-family: inherit; }
   border:none; background:var(--blue); color:white; cursor:pointer; white-space:nowrap; }
 .photo-btn { padding:7px 10px; border-radius:7px; border:1px solid var(--border);
   background:var(--bg); cursor:pointer; font-size:16px; }
+.record-photo-wrap { position:relative; flex-shrink:0; }
+.record-photo-btn { width:34px; height:34px; border-radius:8px; border:1px solid var(--border);
+  background:var(--bg); cursor:pointer; font-size:16px; display:flex;
+  align-items:center; justify-content:center; }
+.record-photo-menu { left:auto; right:0; bottom:40px; }
+.record-photo-grid { display:flex; flex-wrap:wrap; gap:8px; margin-top:10px; }
+.record-photo-thumb { width:72px; height:72px; border-radius:10px; overflow:hidden;
+  border:1px solid var(--border); background:var(--bg); position:relative; flex-shrink:0; }
+.record-photo-thumb img { width:100%; height:100%; object-fit:cover; display:block; }
+.record-photo-remove { position:absolute; top:4px; right:4px; width:22px; height:22px;
+  border:none; border-radius:50%; background:rgba(0,0,0,0.55); color:white;
+  cursor:pointer; font-size:15px; line-height:22px; padding:0; }
+.record-photo-hint { font-size:11px; color:var(--ter); margin-top:8px; }
 
 /* ── Notes ── */
 .note-area { width:100%; border:1px solid var(--border); border-radius:var(--r-sm);
   padding:10px; font-size:14px; color:var(--text); background:var(--bg);
   resize:none; min-height:72px; outline:none; font-family:inherit; line-height:1.5; }
 .note-area:focus { border-color:var(--blue); }
+.note-toolbar { display:flex; align-items:center; justify-content:flex-end; margin-top:8px; }
 
 /* ── Buttons ── */
 .btn-row { display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-top:4px; }
@@ -180,10 +195,12 @@ input, textarea, select, button { font-family: inherit; }
 .hist-ex-icon { color:var(--green); flex-shrink:0; }
 .hist-ex-icon.partial { color:var(--amber); }
 .hist-ex-icon.none { color:var(--ter); }
-.hist-meal-row { display:flex; gap:8px; padding:2px 0; font-size:13px; }
+.hist-meal-entry { padding:2px 0 6px; }
+.hist-meal-row { display:flex; gap:8px; font-size:13px; }
 .hist-meal-time { color:var(--sec); white-space:nowrap; min-width:40px; }
 .hist-note-box { font-size:13px; color:var(--sec); background:var(--bg);
   padding:8px; border-radius:var(--r-sm); margin-top:4px; }
+.hist-note-text { white-space:pre-wrap; }
 
 /* ── Chat ── */
 .chat-container { display:flex; flex-direction:column;
@@ -277,7 +294,7 @@ input, textarea, select, button { font-family: inherit; }
 .empty-icon { font-size:40px; margin-bottom:12px; }
 .tip-box { background:var(--ta-bg); border-radius:var(--r-sm); padding:10px 12px;
   font-size:12px; color:var(--ta-fg); margin-bottom:12px; }
-#hidden-camera, #hidden-gallery { display:none; }
+#hidden-camera, #hidden-gallery, #meal-camera, #meal-gallery, #note-camera, #note-gallery { display:none; }
 
 @media (max-width: 700px) {
   input, textarea, select { font-size:16px !important; }
@@ -618,6 +635,14 @@ const DataStore = {
     if (!this.data.days) this.data.days = {};
     if (typeof this.data.aiMemory !== 'string') this.data.aiMemory = '';
     if (!('memoryUpdatedAt' in this.data)) this.data.memoryUpdatedAt = null;
+    Object.values(this.data.days).forEach(day => {
+      if (!Array.isArray(day.meals)) day.meals = [];
+      if (typeof day.note !== 'string') day.note = '';
+      if (!Array.isArray(day.notePhotos)) day.notePhotos = [];
+      day.meals.forEach(meal => {
+        if (!Array.isArray(meal.photos)) meal.photos = [];
+      });
+    });
   },
 
   today() { return this.dateStr(new Date()); },
@@ -633,7 +658,7 @@ const DataStore = {
     if (!this.data.days[dt]) {
       const dow = new Date(dt + 'T12:00:00').getDay();
       const st = DAY_MAP[dow] || 'rest';
-      const day = { date: dt, st, customExercises: null, exercises: {}, meals: [], note: '' };
+      const day = { date: dt, st, customExercises: null, exercises: {}, meals: [], note: '', notePhotos: [] };
       if (st !== 'rest') {
         const exList = this.getExerciseList(dt);
         exList.forEach(e => {
@@ -694,9 +719,59 @@ const Memory = {
 };
 
 // ─────────────────────────────────────────
+// LOCAL IMAGE THUMBNAILS
+// ─────────────────────────────────────────
+const ImageStore = {
+  maxEdge: 900,
+  quality: 0.72,
+
+  async compressFiles(files) {
+    const picked = Array.from(files || []).filter(f => (f.type || '').startsWith('image/'));
+    const photos = [];
+    for (const file of picked) {
+      const photo = await this.compressFile(file);
+      if (photo) photos.push(photo);
+    }
+    return photos;
+  },
+
+  compressFile(file) {
+    return new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.onerror = () => resolve(null);
+      reader.onload = () => {
+        const img = new Image();
+        img.onerror = () => resolve(null);
+        img.onload = () => {
+          const sourceW = img.naturalWidth || img.width;
+          const sourceH = img.naturalHeight || img.height;
+          const scale = Math.min(1, this.maxEdge / Math.max(sourceW, sourceH));
+          const width = Math.max(1, Math.round(sourceW * scale));
+          const height = Math.max(1, Math.round(sourceH * scale));
+          const canvas = document.createElement('canvas');
+          canvas.width = width;
+          canvas.height = height;
+          canvas.getContext('2d').drawImage(img, 0, 0, width, height);
+          resolve({
+            dataUrl: canvas.toDataURL('image/jpeg', this.quality),
+            width,
+            height,
+            createdAt: new Date().toISOString()
+          });
+        };
+        img.src = reader.result;
+      };
+      reader.readAsDataURL(file);
+    });
+  }
+};
+
+// ─────────────────────────────────────────
 // UI — TODAY
 // ─────────────────────────────────────────
 const UI = {
+  mealDraftPhotos: [],
+
   renderToday() {
     const dt = DataStore.today();
     const day = DataStore.getDay(dt);
@@ -771,6 +846,12 @@ const UI = {
     <div class="card">
       <textarea class="note-area" id="note-area" placeholder="记录训练感受、身体状态…"
         onchange="UI.saveNote(this.value)">${day.note||''}</textarea>
+      ${this.photoGridHTML(day.notePhotos || [], 'note', true, 'UI.deleteNotePhoto')}
+      <div class="note-toolbar">
+        ${this.recordPhotoControlHTML('note')}
+      </div>
+      <input type="file" id="note-camera" accept="image/*" capture="environment" onchange="UI.handleRecordPhoto(this, 'note')">
+      <input type="file" id="note-gallery" accept="image/*" multiple onchange="UI.handleRecordPhoto(this, 'note')">
     </div>
     <div class="btn-row">
       <button class="btn btn-primary" id="save-btn" onclick="UI.saveToday()">💾 保存记录</button>
@@ -806,7 +887,10 @@ const UI = {
       meals.forEach((m, i) => {
         h += `<div class="meal-item">
           <span class="meal-time">${m.time}</span>
-          <span class="meal-text">${m.text}</span>
+          <div class="meal-body">
+            <div class="meal-text">${m.text || '图片记录'}</div>
+            ${this.photoGridHTML(m.photos || [], `meal-${i}`, false)}
+          </div>
           <button class="del-btn" onclick="UI.deleteMeal(${i})">×</button>
         </div>`;
       });
@@ -814,9 +898,33 @@ const UI = {
     h += `<div class="meal-add-row">
       <input class="meal-time-inp" type="text" placeholder="${time}" id="m-time">
       <input class="meal-text-inp" type="text" placeholder="吃了什么…" id="m-text">
+      ${this.recordPhotoControlHTML('meal')}
       <button class="add-meal-btn" onclick="UI.addMeal()">+ 记录</button>
-    </div>`;
+    </div>
+    ${this.photoGridHTML(this.mealDraftPhotos, 'meal-draft', true, 'UI.removeMealDraftPhoto')}
+    ${this.mealDraftPhotos.length ? '<div class="record-photo-hint">图片会压缩后随饮食记录保存到 Google Drive。</div>' : ''}
+    <input type="file" id="meal-camera" accept="image/*" capture="environment" onchange="UI.handleRecordPhoto(this, 'meal')">
+    <input type="file" id="meal-gallery" accept="image/*" multiple onchange="UI.handleRecordPhoto(this, 'meal')">`;
     return h;
+  },
+
+  recordPhotoControlHTML(target) {
+    return `<div class="record-photo-wrap">
+      <button class="record-photo-btn" onclick="UI.toggleRecordPhotoMenu('${target}', event)" title="添加图片">📷</button>
+      <div class="photo-menu record-photo-menu" id="${target}-photo-menu">
+        <button class="photo-option" onclick="UI.pickRecordPhoto('${target}', 'camera')">📷 直接拍照</button>
+        <button class="photo-option" onclick="UI.pickRecordPhoto('${target}', 'gallery')">🖼️ 从本地上传</button>
+      </div>
+    </div>`;
+  },
+
+  photoGridHTML(photos, prefix, editable = false, removeFn = '') {
+    if (!photos || !photos.length) return '';
+    return `<div class="record-photo-grid">${photos.map((p, i) => `
+      <div class="record-photo-thumb">
+        <img src="${p.dataUrl || p.url || ''}" alt="">
+        ${editable ? `<button class="record-photo-remove" onclick="${removeFn}(${i})" title="移除图片">×</button>` : ''}
+      </div>`).join('')}</div>`;
   },
 
   syncInputs() {
@@ -859,8 +967,9 @@ const UI = {
     const xe = document.getElementById('m-text');
     const time = (te && te.value.trim()) || new Date().toTimeString().slice(0,5);
     const text = xe && xe.value.trim();
-    if (!text) return;
-    day.meals.push({ time, text });
+    if (!text && !this.mealDraftPhotos.length) return;
+    day.meals.push({ time, text: text || '图片记录', photos: this.mealDraftPhotos });
+    this.mealDraftPhotos = [];
     Drive.scheduleSave();
     const ml = document.getElementById('meal-list');
     if (ml) ml.innerHTML = this.mealListHTML(day.meals);
@@ -881,8 +990,67 @@ const UI = {
     Drive.scheduleSave();
   },
 
+  toggleRecordPhotoMenu(target, event) {
+    event?.stopPropagation();
+    document.querySelectorAll('.record-photo-menu').forEach(menu => {
+      if (menu.id !== `${target}-photo-menu`) menu.classList.remove('open');
+    });
+    document.getElementById(`${target}-photo-menu`)?.classList.toggle('open');
+  },
+
+  closeRecordPhotoMenus() {
+    document.querySelectorAll('.record-photo-menu').forEach(menu => menu.classList.remove('open'));
+  },
+
+  pickRecordPhoto(target, source) {
+    this.closeRecordPhotoMenus();
+    const id = `${target}-${source === 'camera' ? 'camera' : 'gallery'}`;
+    document.getElementById(id)?.click();
+  },
+
+  async handleRecordPhoto(input, target) {
+    const photos = await ImageStore.compressFiles(input.files);
+    input.value = '';
+    if (!photos.length) return;
+
+    if (target === 'meal') {
+      this.mealDraftPhotos.push(...photos);
+      const day = DataStore.getDay(DataStore.today());
+      const ml = document.getElementById('meal-list');
+      if (ml) ml.innerHTML = this.mealListHTML(day.meals);
+      return;
+    }
+
+    if (target === 'note') {
+      const day = DataStore.getDay(DataStore.today());
+      const noteEl = document.getElementById('note-area');
+      if (noteEl) day.note = noteEl.value;
+      day.notePhotos = day.notePhotos || [];
+      day.notePhotos.push(...photos);
+      Drive.scheduleSave();
+      this.renderToday();
+    }
+  },
+
+  removeMealDraftPhoto(i) {
+    this.mealDraftPhotos.splice(i, 1);
+    const day = DataStore.getDay(DataStore.today());
+    const ml = document.getElementById('meal-list');
+    if (ml) ml.innerHTML = this.mealListHTML(day.meals);
+  },
+
+  deleteNotePhoto(i) {
+    const day = DataStore.getDay(DataStore.today());
+    day.notePhotos = day.notePhotos || [];
+    day.notePhotos.splice(i, 1);
+    Drive.scheduleSave();
+    this.renderToday();
+  },
+
   async saveToday() {
     this.syncInputs();
+    const noteEl = document.getElementById('note-area');
+    if (noteEl) this.saveNote(noteEl.value);
     const btn = document.getElementById('save-btn');
     if (btn) { btn.className = 'btn btn-saved'; btn.textContent = '✓ 已保存'; }
     await Drive.save(true);
@@ -920,6 +1088,7 @@ const History = {
       let tot=0, dn=0;
       if (st !== 'rest') Object.values(day.exercises||{}).forEach(sets => sets.forEach(s => { tot++; if(s.d) dn++; }));
       const mc = (day.meals||[]).length;
+      const photoCount = (day.notePhotos || []).length + (day.meals || []).reduce((sum, m) => sum + (m.photos || []).length, 0);
       const [y,m,d] = dt.split('-');
       const isOpen = this.openDay === dt;
       html += `<div class="hist-item">
@@ -929,7 +1098,7 @@ const History = {
               <span class="hist-date">${y}/${m}/${d} ${DC[dow]}</span>
               <span class="tag ${cls}">${lbl}</span>
             </div>
-            <span class="hist-summary">${st!=='rest'?`训练 ${dn}/${tot} 组 · `:''}饮食 ${mc} 条${day.note?' · 有备注':''}</span>
+            <span class="hist-summary">${st!=='rest'?`训练 ${dn}/${tot} 组 · `:''}饮食 ${mc} 条${day.note?' · 有备注':''}${photoCount ? ` · 图片 ${photoCount} 张` : ''}</span>
           </div>
           <span class="hist-chevron ${isOpen?'open':''}">⌄</span>
         </div>
@@ -971,10 +1140,20 @@ const History = {
     }
     if ((day.meals||[]).length) {
       h += `<div class="hist-detail-section"><div class="hist-detail-label">饮食</div>`;
-      day.meals.forEach(m => { h += `<div class="hist-meal-row"><span class="hist-meal-time">${m.time}</span><span>${m.text}</span></div>`; });
+      day.meals.forEach((m, i) => {
+        h += `<div class="hist-meal-entry">
+          <div class="hist-meal-row"><span class="hist-meal-time">${m.time}</span><span>${m.text || '图片记录'}</span></div>
+          ${UI.photoGridHTML(m.photos || [], `hist-meal-${i}`, false)}
+        </div>`;
+      });
       h += '</div>';
     }
-    if (day.note) h += `<div class="hist-note-box">📝 ${day.note}</div>`;
+    if (day.note || (day.notePhotos || []).length) {
+      h += `<div class="hist-note-box">
+        ${day.note ? `<div class="hist-note-text">📝 ${day.note}</div>` : ''}
+        ${UI.photoGridHTML(day.notePhotos || [], 'hist-note', false)}
+      </div>`;
+    }
     h += '</div>';
     return h;
   }
@@ -1551,6 +1730,7 @@ const App = {
     await Drive.load();
     await Memory.ensure();
     Chat.init();
+    document.addEventListener('click', () => UI.closeRecordPhotoMenus());
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.register('./sw.js').catch(console.error);
     }
