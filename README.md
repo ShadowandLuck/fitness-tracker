@@ -12,7 +12,7 @@ Do not put a Gemini API key in `index.html`. Browser code is public, even when t
 2. In Vercel project settings, add environment variables:
    - `GEMINI_API_KEY`: your Gemini API key
    - `ALLOWED_ORIGINS`: comma-separated origins allowed to call the API, for example `https://shadowandluck.github.io,https://your-app.vercel.app`
-   - `GEMINI_MODEL`: optional, defaults to `gemini-2.5-flash`
+   - `GEMINI_MODEL`: optional, defaults to `gemini-2.5-flash-lite`
    - `GEMINI_MAX_OUTPUT_TOKENS`: optional, defaults to `1600`; values above `10000` are capped
 3. Deploy.
 4. If the app is hosted on Vercel, `CONFIG.AI_ENDPOINT` can stay empty because it will call same-origin `/api/chat`.

@@ -58,7 +58,7 @@ Important environment variables:
 
 - `GEMINI_API_KEY`: private Gemini API key.
 - `ALLOWED_ORIGINS`: allowed browser origins, currently including `https://shadowandluck.github.io`.
-- `GEMINI_MODEL`: model name, default `gemini-2.5-flash`.
+- `GEMINI_MODEL`: model name, default `gemini-2.5-flash-lite` for frequent diet Q&A and food image analysis.
 - `GEMINI_MAX_OUTPUT_TOKENS`: optional response length cap, default `1600`, code caps values above `10000`.
 
 If a real API key is ever pasted into chat, committed, or exposed in browser code, rotate it. Do not preserve the real key in docs.
