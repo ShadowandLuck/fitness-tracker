@@ -237,6 +237,40 @@ https://shadowandluck.github.io/fitness-tracker/?v=3
 
 If that is not enough, unregister the service worker or hard refresh the page.
 
+## Change Log
+
+### 2026-05-10
+
+- Switched the default Gemini model from `gemini-2.5-flash` to `gemini-2.5-flash-lite`.
+  - Reason: the main use case is frequent diet Q&A, food photo analysis, and record updates.
+  - Expected benefit: lower cost and fewer free-tier quota problems for daily mobile use.
+- Improved Gemini quota error handling.
+  - The backend now passes provider status and retry timing to the frontend.
+  - The frontend now shows a clear quota/rate-limit message instead of the generic "AI service unavailable" message.
+- Added local photo gallery selection.
+  - The chat image button now offers both "take photo" and "choose from album".
+  - Camera capture still uses `capture="environment"`.
+  - Gallery selection uses plain `accept="image/*"` so it does not force the camera.
+- Stabilized the mobile bottom layout.
+  - Replaced dynamic viewport-based chat height with a more stable `100svh` app shell.
+  - Locked page-level overflow and moved scrolling into app content and chat messages.
+  - Set fixed bottom navigation height to reduce Safari toolbar-driven layout jumps.
+- Prevented iOS input zoom.
+  - Chat input font size was raised to `16px`.
+  - Mobile form controls are forced to at least `16px` to avoid Safari auto-zoom on focus.
+  - This avoids the page staying zoomed after sending a message and making the bottom controls draggable.
+
+### 2026-05-09
+
+- Added Vercel serverless Gemini proxy so API keys are not exposed in browser code.
+- Added `GEMINI_MAX_OUTPUT_TOKENS`, defaulting to `1600` with a `10000` cap.
+- Added AI memory through `ai-memory.md` and synced app data.
+- Added support for pasted images, drag-dropped images, and image previews in the AI chat.
+- Added hidden `FT_ACTION` handling for workout updates.
+- Added hidden `FT_ACTION` handling for meal updates.
+- Added hidden `FT_ACTION` handling for daily note updates.
+- Added this project knowledge file as the durable design record.
+
 ## Known Future Improvements
 
 - Add clearer UI feedback when Drive sync succeeds or fails.
