@@ -264,6 +264,9 @@ If that is not enough, unregister the service worker or hard refresh the page.
   - Images are compressed in the browser to smaller JPEG thumbnails before saving.
   - Diet images are saved with the specific meal entry; note images are saved under the day's note photos.
   - Because the thumbnails live inside the existing app JSON, Google Drive sync carries them across phone and desktop clients.
+- Added history image preview.
+  - Clicking a saved thumbnail in the history detail opens a larger overlay preview.
+  - The overlay can be closed by tapping the background, the close button, or pressing Escape.
 
 ### 2026-05-09
 
