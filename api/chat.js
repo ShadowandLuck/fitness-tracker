@@ -85,6 +85,12 @@ function validContents(contents) {
   return Array.isArray(contents) && contents.length > 0 && contents.length <= 24;
 }
 
+function retryAfterSeconds(message) {
+  const match = String(message || '').match(/retry in ([\d.]+)s/i);
+  if (!match) return null;
+  return Math.ceil(Number.parseFloat(match[1]));
+}
+
 function maxOutputTokens() {
   const configured = Number.parseInt(process.env.GEMINI_MAX_OUTPUT_TOKENS || '', 10);
   if (!Number.isFinite(configured) || configured <= 0) return DEFAULT_MAX_OUTPUT_TOKENS;
@@ -148,7 +154,12 @@ module.exports = async function handler(req, res) {
 
     const data = await geminiResp.json();
     if (!geminiResp.ok) {
-      sendJson(res, geminiResp.status, { error: data.error?.message || 'Gemini request failed' });
+      const error = data.error?.message || 'Gemini request failed';
+      sendJson(res, geminiResp.status, {
+        error,
+        retryAfter: retryAfterSeconds(error),
+        providerStatus: geminiResp.status
+      });
       return;
     }
 

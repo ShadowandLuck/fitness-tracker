@@ -1113,8 +1113,13 @@ const Chat = {
           body: JSON.stringify({ contents, systemInstruction: this.systemPrompt() })
         }
       );
-      const data = await resp.json();
-      if (!resp.ok) throw new Error(data.error || 'AI request failed');
+      const data = await resp.json().catch(() => ({}));
+      if (!resp.ok) {
+        const error = new Error(data.error || 'AI request failed');
+        error.status = resp.status;
+        error.retryAfter = data.retryAfter;
+        throw error;
+      }
       const { displayText, applied, summary } = this.applyActionFromReply(data.text || '');
       let reply = displayText || (applied ? summary : '抱歉，我没有收到回复，请再试一次。');
       if (data.finishReason === 'MAX_TOKENS') {
@@ -1127,9 +1132,23 @@ const Chat = {
       if (this.history.length > 20) this.history = this.history.slice(-20);
     } catch(e) {
       document.getElementById(typingId)?.remove();
-      this.addMessage('ai', 'AI 服务暂时不可用，请检查后端接口配置后重试。');
+      this.addMessage('ai', this.errorMessage(e));
     }
     sendBtn.disabled = false;
+  },
+
+  errorMessage(error) {
+    if (error?.status === 429 || /quota|rate limit|rate-limit|RESOURCE_EXHAUSTED/i.test(error?.message || '')) {
+      const wait = error.retryAfter ? `，大约 ${error.retryAfter} 秒后再试` : '，请稍等一会儿再试';
+      return `Gemini 免费额度或请求频率限制触发了${wait}。`;
+    }
+    if (error?.status === 403) {
+      return 'AI 后端拒绝了当前网页来源，请检查 Vercel 的 ALLOWED_ORIGINS 设置。';
+    }
+    if (error?.status === 500 && /GEMINI_API_KEY/i.test(error?.message || '')) {
+      return 'AI 后端没有配置 Gemini API Key，请检查 Vercel 环境变量。';
+    }
+    return 'AI 服务暂时不可用，请稍后重试。';
   },
 
   trySaveMemoryFromText(text) {
