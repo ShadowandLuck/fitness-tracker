@@ -202,9 +202,18 @@ input, textarea, select, button { font-family: inherit; }
   outline:none; resize:none; max-height:100px; font-family:inherit;
   line-height:1.4; overflow-y:auto; }
 .chat-input:focus { border-color:var(--blue); }
+.chat-photo-wrap { position:relative; flex-shrink:0; }
 .chat-cam-btn { width:36px; height:36px; border-radius:50%; border:1px solid var(--border);
   background:var(--bg); cursor:pointer; font-size:18px; display:flex;
   align-items:center; justify-content:center; flex-shrink:0; }
+.photo-menu { display:none; position:absolute; left:0; bottom:44px; min-width:154px;
+  background:var(--card); border:1px solid var(--border); border-radius:12px;
+  box-shadow:0 8px 28px rgba(0,0,0,0.14); padding:6px; z-index:20; }
+.photo-menu.open { display:block; }
+.photo-option { width:100%; border:none; background:transparent; border-radius:8px;
+  padding:10px 12px; font-size:14px; color:var(--text); text-align:left;
+  cursor:pointer; white-space:nowrap; }
+.photo-option:active { background:var(--bg); }
 .chat-send-btn { width:36px; height:36px; border-radius:50%; border:none;
   background:var(--blue); cursor:pointer; color:white; font-size:18px;
   display:flex; align-items:center; justify-content:center; flex-shrink:0; }
@@ -261,7 +270,7 @@ input, textarea, select, button { font-family: inherit; }
 .empty-icon { font-size:40px; margin-bottom:12px; }
 .tip-box { background:var(--ta-bg); border-radius:var(--r-sm); padding:10px 12px;
   font-size:12px; color:var(--ta-fg); margin-bottom:12px; }
-#hidden-photo { display:none; }
+#hidden-camera, #hidden-gallery { display:none; }
 </style>
 </head>
 <body>
@@ -303,13 +312,20 @@ input, textarea, select, button { font-family: inherit; }
         </div>
         <div class="chat-preview" id="chat-preview"></div>
         <div class="chat-input-wrap">
-          <button class="chat-cam-btn" onclick="document.getElementById('hidden-photo').click()">📷</button>
+          <div class="chat-photo-wrap">
+            <button class="chat-cam-btn" onclick="Chat.togglePhotoMenu(event)" title="添加图片">📷</button>
+            <div class="photo-menu" id="chat-photo-menu">
+              <button class="photo-option" onclick="Chat.pickPhoto('camera')">📷 拍照</button>
+              <button class="photo-option" onclick="Chat.pickPhoto('gallery')">🖼️ 从相册选择</button>
+            </div>
+          </div>
           <textarea class="chat-input" id="chat-input" placeholder="发消息给 AI 助手…" rows="1"
             onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();Chat.send()}"
             oninput="this.style.height='auto';this.style.height=this.scrollHeight+'px'"></textarea>
           <button class="chat-send-btn" id="chat-send-btn" onclick="Chat.send()">↑</button>
         </div>
-        <input type="file" id="hidden-photo" accept="image/*" capture="environment" onchange="Chat.handlePhoto(this)">
+        <input type="file" id="hidden-camera" accept="image/*" capture="environment" onchange="Chat.handlePhoto(this, '📷 已拍摄图片')">
+        <input type="file" id="hidden-gallery" accept="image/*" onchange="Chat.handlePhoto(this, '🖼️ 已选择图片')">
       </div>
     </div>
   </main>
@@ -1043,6 +1059,7 @@ const Chat = {
       if (!document.getElementById('panel-chat')?.classList.contains('active')) return;
       this.handlePaste(event);
     });
+    document.addEventListener('click', () => this.closePhotoMenu());
     this.listenersReady = true;
   },
 
@@ -1326,9 +1343,24 @@ const Chat = {
     return `已更新今天的运动记录：<br>${rows.join('<br>')}`;
   },
 
-  handlePhoto(input) {
+  togglePhotoMenu(event) {
+    event?.stopPropagation();
+    document.getElementById('chat-photo-menu')?.classList.toggle('open');
+  },
+
+  closePhotoMenu() {
+    document.getElementById('chat-photo-menu')?.classList.remove('open');
+  },
+
+  pickPhoto(source) {
+    this.closePhotoMenu();
+    const id = source === 'camera' ? 'hidden-camera' : 'hidden-gallery';
+    document.getElementById(id)?.click();
+  },
+
+  handlePhoto(input, label = '📷 已选择图片') {
     const file = input.files[0];
-    if (file) this.queueImage(file, '📷 已选择图片');
+    if (file) this.queueImage(file, label);
     input.value = '';
   },
 
