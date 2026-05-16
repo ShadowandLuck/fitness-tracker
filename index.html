@@ -300,6 +300,16 @@ input, textarea, select, button { font-family: inherit; }
   border-radius:6px; padding:4px; background:var(--bg); }
 .edit-section-label { font-size:12px; font-weight:600; color:var(--sec);
   text-transform:uppercase; letter-spacing:0.3px; margin:12px 0 6px; }
+.custom-ex-form { border:1px solid var(--border); border-radius:var(--r-sm);
+  padding:10px; background:var(--bg); margin:8px 0 14px; }
+.custom-ex-grid { display:grid; grid-template-columns:1.4fr 0.7fr 0.9fr 0.8fr; gap:8px; }
+.custom-ex-grid input { min-width:0; font-size:13px; border:1px solid var(--border);
+  border-radius:7px; padding:7px 8px; background:var(--card); color:var(--text); outline:none; }
+.custom-ex-grid input:focus { border-color:var(--blue); }
+.custom-ex-error { display:none; color:#D32F2F; font-size:12px; margin-top:8px; }
+@media (max-width: 700px) {
+  .custom-ex-grid { grid-template-columns:1fr 1fr; }
+}
 
 /* ── Misc ── */
 .rest-card-body { font-size:14px; color:var(--sec); line-height:1.6; }
@@ -446,6 +456,16 @@ const PLAN = {
 const DAY_MAP = {1:'A', 3:'B', 5:'C', 6:'C'};
 const DC = ['周日','周一','周二','周三','周四','周五','周六'];
 const BAND_LEVELS = new Set(['轻', '中', '重']);
+
+function escapeHTML(value) {
+  return String(value ?? '').replace(/[&<>"']/g, ch => ({
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    '"': '&quot;',
+    "'": '&#39;'
+  }[ch]));
+}
 
 function defaultSetForExercise(exercise) {
   if (exercise.type === 'band') return {v:'',b:'轻',d:false};
@@ -662,12 +682,21 @@ const DataStore = {
   data: null,
 
   defaultData() {
-    return { version: 1, days: {}, aiMemory: '', memoryUpdatedAt: null };
+    return { version: 1, days: {}, exerciseLibrary: [], aiMemory: '', memoryUpdatedAt: null };
   },
 
   normalize() {
     if (!this.data || typeof this.data !== 'object') this.data = this.defaultData();
     if (!this.data.days) this.data.days = {};
+    if (!Array.isArray(this.data.exerciseLibrary)) this.data.exerciseLibrary = [];
+    this.data.exerciseLibrary = this.data.exerciseLibrary.filter(ex => ex && ex.id && ex.name).map(ex => ({
+      ...ex,
+      type: 'custom',
+      sets: Math.max(1, parseInt(ex.sets, 10) || 3),
+      targetValue: String(ex.targetValue || ''),
+      unit: String(ex.unit || '次'),
+      target: ex.target || `${Math.max(1, parseInt(ex.sets, 10) || 3)}组 × ${ex.targetValue || ''}${ex.unit || '次'}`
+    }));
     if (typeof this.data.aiMemory !== 'string') this.data.aiMemory = '';
     if (!('memoryUpdatedAt' in this.data)) this.data.memoryUpdatedAt = null;
     Object.values(this.data.days).forEach(day => {
@@ -715,6 +744,10 @@ const DataStore = {
     if (day && day.customExercises) return day.customExercises;
     const st = DAY_MAP[new Date(dt + 'T12:00:00').getDay()];
     return st ? PLAN[st].exercises : [];
+  },
+
+  getExerciseLibrary() {
+    return Array.isArray(this.data.exerciseLibrary) ? this.data.exerciseLibrary : [];
   },
 
   saveDay(dt, updates) {
@@ -857,11 +890,11 @@ const UI = {
         const allDone = sets.length > 0 && sets.every(s => s.d);
         html += `<div class="ex-row" id="ex-${e.id}">
           <div class="ex-header">
-            <div><span class="ex-name">${e.name}</span>
-            <span class="ex-target"> — ${e.target}</span></div>
+            <div><span class="ex-name">${escapeHTML(e.name)}</span>
+            <span class="ex-target"> — ${escapeHTML(e.target)}</span></div>
             <span class="ex-done-badge" id="done-${e.id}" style="display:${allDone?'inline':'none'}">✓ 完成</span>
           </div>`;
-        sets.forEach((s, i) => { html += this.setRowHTML(e.id, e.type, i, s); });
+        sets.forEach((s, i) => { html += this.setRowHTML(e, i, s); });
         html += `</div>`;
       });
 
@@ -900,8 +933,10 @@ const UI = {
     document.getElementById('panel-today').innerHTML = html;
   },
 
-  setRowHTML(eid, type, i, s) {
-    const v = s.v || '';
+  setRowHTML(e, i, s) {
+    const eid = e.id;
+    const type = e.type;
+    const v = escapeHTML(s.v || '');
     let inputs = '';
     if (type === 'reps') inputs = `<input class="set-input" type="text" inputmode="numeric" placeholder="次" value="${v}" data-k="${eid}:${i}:v"><span class="set-unit">次</span>`;
     else if (type === 'side') inputs = `<input class="set-input" type="text" inputmode="numeric" placeholder="次" value="${v}" data-k="${eid}:${i}:v"><span class="set-unit">次/侧</span>`;
@@ -914,6 +949,7 @@ const UI = {
       </select><span class="set-unit">阻力</span>`;
     else if (type === 'band_lbs') inputs = `<input class="set-input" type="text" inputmode="numeric" placeholder="次" value="${v}" data-k="${eid}:${i}:v"><span class="set-unit">次</span>
       <input class="set-band-lbs" type="text" inputmode="decimal" placeholder="磅" value="${bandPoundsValue(s.b)}" data-k="${eid}:${i}:b"><span class="set-unit">磅</span>`;
+    else if (type === 'custom') inputs = `<input class="set-input" type="text" inputmode="decimal" placeholder="${escapeHTML(e.unit || '数值')}" value="${v}" data-k="${eid}:${i}:v"><span class="set-unit">${escapeHTML(e.unit || '')}</span>`;
     return `<div class="set-row">
       <span class="set-label">组${i+1}</span>${inputs}
       <button id="sb-${eid}-${i}" class="done-btn ${s.d?'done':''}" onclick="UI.toggleSet('${eid}',${i})">${s.d?'✓':'完成'}</button>
@@ -1170,14 +1206,16 @@ const History = {
           const unit = e.type==='time'?'秒':e.type==='side'?'/侧':'次';
           if (e.type === 'band') {
             const bs = [...new Set(done.filter(s=>s.b).map(s=>s.b))];
-            detail += ` · ${vals[0].v}次${bs.length?' '+bs[0]+'阻力':''}`;
+            detail += ` · ${escapeHTML(vals[0].v)}次${bs.length?' '+escapeHTML(bs[0])+'阻力':''}`;
           } else if (e.type === 'band_lbs') {
             const lbs = [...new Set(done.map(s=>bandPoundsValue(s.b)).filter(Boolean))];
-            detail += ` · ${vals[0].v}次${lbs.length?' '+lbs[0]+'磅':''}`;
-          } else detail += ` · ${vals.map(s=>s.v+unit).join('/')}`;
+            detail += ` · ${escapeHTML(vals[0].v)}次${lbs.length?' '+escapeHTML(lbs[0])+'磅':''}`;
+          } else if (e.type === 'custom') {
+            detail += ` · ${vals.map(s=>escapeHTML(s.v)+escapeHTML(e.unit || '')).join('/')}`;
+          } else detail += ` · ${vals.map(s=>escapeHTML(s.v)+unit).join('/')}`;
         }
         h += `<div class="hist-ex-row"><span class="hist-ex-icon ${iconCls}">${icon}</span>
-          <span style="flex:1">${e.name}</span><span style="color:var(--sec)">${detail}</span></div>`;
+          <span style="flex:1">${escapeHTML(e.name)}</span><span style="color:var(--sec)">${detail}</span></div>`;
       });
       h += '</div>';
     }
@@ -1237,59 +1275,118 @@ const EditModal = {
     if (st === 'rest') return;
     const currentList = DataStore.getExerciseList(dt);
     this.tempList = JSON.parse(JSON.stringify(currentList));
+    this.render();
+    document.getElementById('edit-modal').classList.add('open');
+  },
 
+  render() {
+    if (!this.tempList) return;
     let html = '<div class="edit-section-label">当前训练动作</div>';
     this.tempList.forEach((e, idx) => {
       html += `<div class="edit-ex-item">
         <button class="edit-ex-toggle on" id="etog-${idx}" onclick="EditModal.removeEx(${idx})">✓</button>
-        <span class="edit-ex-name">${e.name}</span>
+        <span class="edit-ex-name">${escapeHTML(e.name)}
+          <span style="display:block;font-size:12px;color:var(--sec);margin-top:2px">${escapeHTML(e.target || '')}</span>
+        </span>
         <span style="font-size:12px;color:var(--sec)">
           <input class="edit-ex-sets" type="text" inputmode="numeric" value="${e.sets}" id="esets-${idx}">组
         </span>
       </div>`;
     });
 
-    html += '<div class="edit-section-label" style="margin-top:16px">添加动作</div>';
+    html += `<div class="edit-section-label" style="margin-top:16px">新的动作</div>
+    <div class="custom-ex-form">
+      <div class="custom-ex-grid">
+        <input id="custom-ex-name" type="text" placeholder="运动名称">
+        <input id="custom-ex-sets" type="text" inputmode="numeric" placeholder="组数">
+        <input id="custom-ex-reps" type="text" inputmode="decimal" placeholder="每组个数">
+        <input id="custom-ex-unit" type="text" placeholder="单位">
+      </div>
+      <div class="custom-ex-error" id="custom-ex-error"></div>
+      <button class="add-meal-btn" style="margin-top:10px" onclick="EditModal.addCustomExercise()">+ 添加新动作</button>
+    </div>
+    <div class="edit-section-label" style="margin-top:16px">添加动作</div>`;
     // All available exercises not already in list
-    const allEx = [...PLAN.A.exercises, ...PLAN.B.exercises, ...PLAN.C.exercises];
+    const allEx = [...PLAN.A.exercises, ...PLAN.B.exercises, ...PLAN.C.exercises, ...DataStore.getExerciseLibrary()];
     const currentIds = new Set(this.tempList.map(e => e.id));
     allEx.filter(e => !currentIds.has(e.id)).forEach(e => {
       html += `<div class="edit-ex-item">
         <button class="edit-ex-toggle" onclick="EditModal.addEx('${e.id}')">+</button>
-        <span class="edit-ex-name">${e.name}</span>
-        <span style="font-size:12px;color:var(--sec)">${e.target}</span>
+        <span class="edit-ex-name">${escapeHTML(e.name)}</span>
+        <span style="font-size:12px;color:var(--sec)">${escapeHTML(e.target)}</span>
       </div>`;
     });
 
     document.getElementById('edit-modal-body').innerHTML = html;
-    document.getElementById('edit-modal').classList.add('open');
+  },
+
+  syncTempInputs() {
+    if (!this.tempList) return;
+    this.tempList.forEach((e, idx) => {
+      const inp = document.getElementById(`esets-${idx}`);
+      if (inp) e.sets = Math.max(1, parseInt(inp.value, 10) || e.sets);
+    });
   },
 
   removeEx(idx) {
+    this.syncTempInputs();
     this.tempList.splice(idx, 1);
-    this.open();
+    this.render();
   },
 
   addEx(id) {
-    const e = [...PLAN.A.exercises, ...PLAN.B.exercises, ...PLAN.C.exercises].find(x => x.id === id);
-    if (e) { this.tempList.push({...e}); this.open(); }
+    this.syncTempInputs();
+    const e = [...PLAN.A.exercises, ...PLAN.B.exercises, ...PLAN.C.exercises, ...DataStore.getExerciseLibrary()].find(x => x.id === id);
+    if (e) { this.tempList.push(JSON.parse(JSON.stringify(e))); this.render(); }
+  },
+
+  addCustomExercise() {
+    this.syncTempInputs();
+    const name = document.getElementById('custom-ex-name')?.value.trim() || '';
+    const sets = Math.max(1, parseInt(document.getElementById('custom-ex-sets')?.value, 10) || 0);
+    const targetValue = (document.getElementById('custom-ex-reps')?.value || '').trim();
+    const unit = (document.getElementById('custom-ex-unit')?.value || '').trim();
+    if (!name || !sets || !targetValue || !unit) {
+      this.showCustomError('请填写运动名称、组数、每组个数和单位。');
+      return;
+    }
+
+    const ex = {
+      id: `u${Date.now().toString(36)}`,
+      name,
+      target: `${sets}组 × ${targetValue}${unit}`,
+      sets,
+      type: 'custom',
+      targetValue,
+      unit
+    };
+    DataStore.data.exerciseLibrary.push(ex);
+    this.tempList.push(JSON.parse(JSON.stringify(ex)));
+    Drive.scheduleSave();
+    this.render();
+  },
+
+  showCustomError(message) {
+    const el = document.getElementById('custom-ex-error');
+    if (!el) return;
+    el.textContent = message;
+    el.style.display = 'block';
   },
 
   save() {
-    // Sync set counts from inputs
-    this.tempList.forEach((e, idx) => {
-      const inp = document.getElementById(`esets-${idx}`);
-      if (inp) e.sets = Math.max(1, parseInt(inp.value) || e.sets);
-    });
+    this.syncTempInputs();
     const dt = DataStore.today();
     const day = DataStore.getDay(dt);
     day.customExercises = this.tempList.length > 0 ? this.tempList : null;
-    // Re-initialize exercises for new list
+    // Re-initialize or resize exercises for the edited list
     this.tempList.forEach(e => {
       if (!day.exercises[e.id]) {
         day.exercises[e.id] = Array.from({length: e.sets}, () =>
           defaultSetForExercise(e)
         );
+      } else {
+        while (day.exercises[e.id].length < e.sets) day.exercises[e.id].push(defaultSetForExercise(e));
+        if (day.exercises[e.id].length > e.sets) day.exercises[e.id].length = e.sets;
       }
     });
     Drive.scheduleSave();
