@@ -114,6 +114,10 @@ input, textarea, select, button { font-family: inherit; }
 .set-unit { font-size:11px; color:var(--ter); white-space:nowrap; }
 .set-band { font-size:12px; border:1px solid var(--border); border-radius:7px;
   padding:5px 6px; background:var(--bg); color:var(--text); outline:none; }
+.set-band-lbs { width:50px; text-align:center; font-size:14px; border:1px solid var(--border);
+  border-radius:7px; padding:5px 4px; background:var(--bg); color:var(--text);
+  outline:none; -webkit-appearance:none; }
+.set-band-lbs:focus { border-color:var(--blue); }
 .done-btn { background:none; border:1px solid var(--border); border-radius:7px;
   padding:5px 10px; font-size:12px; cursor:pointer; color:var(--sec); white-space:nowrap;
   flex-shrink:0; transition:all 0.15s; }
@@ -434,13 +438,27 @@ const PLAN = {
   ]},
   C: { name:'全身整合', tag:'训练 C', cls:'tag-c', exercises:[
     {id:'c1',name:'俯卧撑变式',target:'3组 × 尽力',sets:3,type:'reps'},
-    {id:'c2',name:'弹力带面拉',target:'3组 × 15次',sets:3,type:'band'},
+    {id:'c2',name:'弹力带面拉',target:'3组 × 15次',sets:3,type:'band_lbs'},
     {id:'c3',name:'侧卧蚌式开合',target:'3组 × 15次/侧',sets:3,type:'side'},
     {id:'c4',name:'平板支撑',target:'3组 × 20–30秒',sets:3,type:'time'}
   ]}
 };
 const DAY_MAP = {1:'A', 3:'B', 5:'C', 6:'C'};
 const DC = ['周日','周一','周二','周三','周四','周五','周六'];
+const BAND_LEVELS = new Set(['轻', '中', '重']);
+
+function defaultSetForExercise(exercise) {
+  if (exercise.type === 'band') return {v:'',b:'轻',d:false};
+  if (exercise.type === 'band_lbs') return {v:'',b:'',d:false};
+  return {v:'',d:false};
+}
+
+function bandPoundsValue(value) {
+  const raw = String(value || '').trim();
+  if (!raw || BAND_LEVELS.has(raw)) return '';
+  const match = raw.match(/\d+(?:\.\d+)?/);
+  return match ? match[0] : raw;
+}
 
 // ─────────────────────────────────────────
 // AUTH
@@ -653,6 +671,9 @@ const DataStore = {
     if (typeof this.data.aiMemory !== 'string') this.data.aiMemory = '';
     if (!('memoryUpdatedAt' in this.data)) this.data.memoryUpdatedAt = null;
     Object.values(this.data.days).forEach(day => {
+      if (Array.isArray(day.customExercises)) {
+        day.customExercises.forEach(ex => { if (ex.id === 'c2') ex.type = 'band_lbs'; });
+      }
       if (!Array.isArray(day.meals)) day.meals = [];
       if (typeof day.note !== 'string') day.note = '';
       if (!Array.isArray(day.notePhotos)) day.notePhotos = [];
@@ -680,7 +701,7 @@ const DataStore = {
         const exList = this.getExerciseList(dt);
         exList.forEach(e => {
           day.exercises[e.id] = Array.from({length: e.sets}, () =>
-            e.type === 'band' ? {v:'',b:'轻',d:false} : {v:'',d:false}
+            defaultSetForExercise(e)
           );
         });
       }
@@ -891,6 +912,8 @@ const UI = {
         <option value="中" ${s.b==='中'?'selected':''}>中</option>
         <option value="重" ${s.b==='重'?'selected':''}>重</option>
       </select><span class="set-unit">阻力</span>`;
+    else if (type === 'band_lbs') inputs = `<input class="set-input" type="text" inputmode="numeric" placeholder="次" value="${v}" data-k="${eid}:${i}:v"><span class="set-unit">次</span>
+      <input class="set-band-lbs" type="text" inputmode="decimal" placeholder="磅" value="${bandPoundsValue(s.b)}" data-k="${eid}:${i}:b"><span class="set-unit">磅</span>`;
     return `<div class="set-row">
       <span class="set-label">组${i+1}</span>${inputs}
       <button id="sb-${eid}-${i}" class="done-btn ${s.d?'done':''}" onclick="UI.toggleSet('${eid}',${i})">${s.d?'✓':'完成'}</button>
@@ -1148,6 +1171,9 @@ const History = {
           if (e.type === 'band') {
             const bs = [...new Set(done.filter(s=>s.b).map(s=>s.b))];
             detail += ` · ${vals[0].v}次${bs.length?' '+bs[0]+'阻力':''}`;
+          } else if (e.type === 'band_lbs') {
+            const lbs = [...new Set(done.map(s=>bandPoundsValue(s.b)).filter(Boolean))];
+            detail += ` · ${vals[0].v}次${lbs.length?' '+lbs[0]+'磅':''}`;
           } else detail += ` · ${vals.map(s=>s.v+unit).join('/')}`;
         }
         h += `<div class="hist-ex-row"><span class="hist-ex-icon ${iconCls}">${icon}</span>
@@ -1262,7 +1288,7 @@ const EditModal = {
     this.tempList.forEach(e => {
       if (!day.exercises[e.id]) {
         day.exercises[e.id] = Array.from({length: e.sets}, () =>
-          e.type === 'band' ? {v:'',b:'轻',d:false} : {v:'',d:false}
+          defaultSetForExercise(e)
         );
       }
     });
@@ -1423,11 +1449,13 @@ const Chat = {
       const count = setMatch ? Math.min(parseInt(setMatch[1], 10), day.exercises[ex.id]?.length || 0) : day.exercises[ex.id]?.length || 0;
       const valueMatch = line.match(/每组\s*(\d+)|(\d+)\s*(?:个|次|秒)/);
       const value = valueMatch ? (valueMatch[1] || valueMatch[2]) : '';
+      const poundsMatch = line.match(/(\d+(?:\.\d+)?)\s*(?:磅|lb|lbs|pound)/i);
 
       for (let i = 0; i < count; i++) {
         const set = day.exercises[ex.id]?.[i];
         if (!set) continue;
         if (value) set.v = value;
+        if (ex.type === 'band_lbs' && poundsMatch) set.b = poundsMatch[1];
         set.d = true;
         changed = true;
       }
@@ -1495,7 +1523,8 @@ const Chat = {
     if (!action || action.type !== 'update_workout' || !Array.isArray(action.exercises)) return false;
     const dt = DataStore.today();
     const day = DataStore.getDay(dt);
-    const validIds = new Set(DataStore.getExerciseList(dt).map(e => e.id));
+    const exMap = new Map(DataStore.getExerciseList(dt).map(e => [e.id, e]));
+    const validIds = new Set(exMap.keys());
     let changed = false;
 
     action.exercises.forEach(ex => {
@@ -1505,7 +1534,8 @@ const Chat = {
         const set = day.exercises[ex.id]?.[index];
         if (!set) return;
         if (s.value !== undefined) set.v = String(s.value);
-        if (s.band) set.b = String(s.band);
+        if (s.band !== undefined) set.b = exMap.get(ex.id)?.type === 'band_lbs' ? bandPoundsValue(s.band) : String(s.band);
+        if (s.pounds !== undefined) set.b = bandPoundsValue(s.pounds);
         set.d = s.done !== false;
         changed = true;
       });
@@ -1718,7 +1748,7 @@ const Chat = {
       });
       if (done.length) ctx += `已完成：${done.join('、')}\n`;
       if (undone.length) ctx += `未完成：${undone.join('、')}\n`;
-      ctx += `今日动作ID：${exList.map(e => `${e.id}=${e.name}，${e.sets}组，类型${e.type}`).join('；')}\n`;
+      ctx += `今日动作ID：${exList.map(e => `${e.id}=${e.name}，${e.sets}组，类型${e.type}${e.type === 'band_lbs' ? '，band字段填写弹力带磅数' : ''}`).join('；')}\n`;
     }
     if (day.meals?.length) ctx += `饮食记录：${day.meals.map(m => m.time + ' ' + m.text).join('；')}\n`;
     if (day.note) ctx += `备注：${day.note}\n`;
@@ -1743,7 +1773,7 @@ const Chat = {
 	[[FT_ACTION]]
 	{"type":"update_workout","exercises":[{"id":"动作ID","sets":[{"index":0,"value":"8","done":true}]}]}
 	[[/FT_ACTION]]
-	index 从 0 开始；3组就写 index 0、1、2。只更新用户明确提到的动作。隐藏动作块外的中文回复简洁、实用，不超过200字。`;
+	index 从 0 开始；3组就写 index 0、1、2。只更新用户明确提到的动作。弹力带面拉（c2）如果用户说了磅数，在 set 里用 band 写入数字磅数，例如 "band":"20"。隐藏动作块外的中文回复简洁、实用，不超过200字。`;
   }
 };
 
